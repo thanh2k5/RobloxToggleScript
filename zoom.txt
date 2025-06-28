@@ -104,3 +104,70 @@ uis.InputEnded:Connect(function(input)
 		dragging = false
 	end
 end)
+-- Hover Toggle Script (One Fruit Simulator, Executor Safe, Mobile Friendly)
+local player = game.Players.LocalPlayer
+local RunService = game:GetService("RunService")
+
+-- Config
+local hoverVel = Vector3.new(0, 0.1, 0)
+local hoverForce = Vector3.new(0, math.huge, 0)
+local toggleState = false
+local bv = nil
+
+-- GUI Toggle Button
+local gui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
+gui.Name = "HoverToggleUI"
+gui.ResetOnSpawn = false
+
+local button = Instance.new("TextButton")
+button.Size = UDim2.new(0, 120, 0, 40)
+button.Position = UDim2.new(0, 20, 0, 100)
+button.BackgroundColor3 = Color3.fromRGB(50, 50, 255)
+button.TextColor3 = Color3.new(1, 1, 1)
+button.Font = Enum.Font.SourceSansBold
+button.TextSize = 20
+button.Text = "Hover: OFF"
+button.Parent = gui
+
+-- Hover Setup
+local function createHover()
+    local char = player.Character
+    if not char then return end
+    local hrp = char:WaitForChild("HumanoidRootPart")
+
+    if not bv then
+        bv = Instance.new("BodyVelocity")
+        bv.Name = "HoverStealth"
+        bv.MaxForce = hoverForce
+        bv.Velocity = hoverVel
+        bv.P = 3000
+    end
+    bv.Parent = hrp
+
+    RunService.RenderStepped:Connect(function()
+        if toggleState and bv and bv.Parent then
+            bv.Velocity = hoverVel
+        end
+    end)
+end
+
+-- Toggle Logic
+button.MouseButton1Click:Connect(function()
+    toggleState = not toggleState
+    button.Text = toggleState and "Hover: ON" or "Hover: OFF"
+
+    if toggleState then
+        createHover()
+    elseif bv then
+        bv.Parent = nil
+    end
+end)
+
+-- Auto-reapply on respawn
+player.CharacterAdded:Connect(function()
+    bv = nil
+    if toggleState then
+        wait(1)
+        createHover()
+    end
+end)
