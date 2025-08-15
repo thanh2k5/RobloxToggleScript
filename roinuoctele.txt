@@ -1,1 +1,21 @@
-
+local dest = Vector3.new(11273, 301, 23531)
+local p = game.Players.LocalPlayer
+local c = p.Character or p.CharacterAdded:Wait()
+local h = c:WaitForChild("Humanoid")
+local last = h.Health
+h:GetPropertyChangedSignal("Health"):Connect(function()
+    if h.Health < last then
+        c.HumanoidRootPart.CFrame = CFrame.new(dest)
+    end
+    last = h.Health
+end)
+local gui = Instance.new("ScreenGui", p:WaitForChild("PlayerGui"))
+gui.ResetOnSpawn = false
+local btn = Instance.new("TextButton", gui)
+btn.Size = UDim2.new(0, 10, 0, 10)
+btn.Position = UDim2.new(0, 10, 0, 10)
+btn.Text = ""
+btn.BackgroundColor3 = Color3.new(1, 0, 0)
+btn.MouseButton1Click:Connect(function()
+    c.HumanoidRootPart.CFrame = CFrame.new(dest)
+end)
