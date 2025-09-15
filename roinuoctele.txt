@@ -1,5 +1,6 @@
 --local dest = Vector3.new(11273, 301, 23531)
-local dest = Vector3.new(16227, 222, -3901)
+--local dest = Vector3.new(16227, 222, -3901)
+local dest = Vector3.new(11867, 164, 21446)
 local p = game.Players.LocalPlayer
 local c = p.Character or p.CharacterAdded:Wait()
 local h = c:WaitForChild("Humanoid")
