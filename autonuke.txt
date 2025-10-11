@@ -1,0 +1,27 @@
+while task.wait(0.5) do
+	if not getgenv().AutoAbilitiesEnabled then continue end
+
+	local wave = getCurrentWave()
+	local boss = bossExists()
+	lastWave = wave
+
+	if boss and wave >= 50 then
+		for unit, abilities in pairs(getgenv().UnitAbilities) do
+			local tower = workspace.Towers:FindFirstChild(unit)
+			if tower then
+				local info = getTowerInfoName(tower)
+				local lvl = getUpgradeLevel(tower)
+				for name in pairs(abilities) do
+					local data = getAbilityData(info, name)
+					if data and hasAbilityBeenUnlocked(info, name, lvl) and not isOnCooldown(info, name) then
+						useAbility(tower, name)
+						setAbilityUsed(info, name)
+						print("[AutoAbility] ⚡ " .. name .. " (" .. unit .. ") [Boss+Wave50]")
+					end
+				end
+			end
+		end
+	end
+
+	if Fluent.Unloaded then break end
+end
