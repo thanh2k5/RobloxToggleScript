@@ -20,6 +20,8 @@ while task.wait(0.5) do
 
 	local wave = getCurrentWave()
 	local boss = bossExists()
+	print(string.format("[AutoAbility] Check... Wave: %d | Boss: %s", wave, tostring(boss)))
+
 	if boss and wave >= 50 then
 		for unit, abilities in pairs(getgenv().UnitAbilities) do
 			local tower = workspace.Towers:FindFirstChild(unit)
