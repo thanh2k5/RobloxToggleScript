@@ -1,10 +1,25 @@
+function bossExists()
+	for _, enemy in pairs(workspace.Enemies:GetChildren()) do
+		if enemy:FindFirstChild("BossIndicator") or enemy.Name:lower():find("boss") then
+			return true
+		end
+	end
+	return false
+end
+function getCurrentWave()
+	local waveLabel = game:GetService("Players").LocalPlayer.PlayerGui:FindFirstChild("WaveDisplay") or workspace:FindFirstChild("WaveDisplay")
+	if waveLabel and waveLabel:FindFirstChild("WaveNumber") then
+		local waveText = waveLabel.WaveNumber.Text
+		local num = tonumber(waveText:match("%d+"))
+		return num or 0
+	end
+	return 0
+end
 while task.wait(0.5) do
 	if not getgenv().AutoAbilitiesEnabled then continue end
 
 	local wave = getCurrentWave()
 	local boss = bossExists()
-	lastWave = wave
-
 	if boss and wave >= 50 then
 		for unit, abilities in pairs(getgenv().UnitAbilities) do
 			local tower = workspace.Towers:FindFirstChild(unit)
@@ -16,12 +31,11 @@ while task.wait(0.5) do
 					if data and hasAbilityBeenUnlocked(info, name, lvl) and not isOnCooldown(info, name) then
 						useAbility(tower, name)
 						setAbilityUsed(info, name)
-						print("[AutoAbility] ⚡ " .. name .. " (" .. unit .. ") [Boss+Wave50]")
+						print("[AutoAbility] ⚡ Đã dùng " .. name .. " cho " .. unit .. " (Boss+Wave50)")
 					end
 				end
 			end
 		end
 	end
-
 	if Fluent.Unloaded then break end
 end
