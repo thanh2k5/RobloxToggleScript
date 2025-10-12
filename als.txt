@@ -1,0 +1,698 @@
+repeat task.wait() until game:IsLoaded()
+
+local repo = "https://raw.githubusercontent.com/byorl/Obsidian/main/"
+local Library = loadstring(game:HttpGet(repo .. "Library.lua"))()
+local ThemeManager = loadstring(game:HttpGet(repo .. "addons/ThemeManager.lua"))()
+
+local Players = game:GetService("Players")
+local HttpService = game:GetService("HttpService")
+local RS = game:GetService("ReplicatedStorage")
+local VIM = game:GetService("VirtualInputManager")
+local TeleportService = game:GetService("TeleportService")
+local LocalPlayer = Players.LocalPlayer
+
+local CONFIG_FOLDER = "ALSHalloweenEvent"
+local CONFIG_FILE = "config.json"
+local USER_ID = tostring(LocalPlayer.UserId)
+
+local function getConfigPath() return CONFIG_FOLDER .. "/" .. USER_ID .. "/" .. CONFIG_FILE end
+local function getUserFolder() return CONFIG_FOLDER .. "/" .. USER_ID end
+local function getOldConfigPath() return CONFIG_FOLDER .. "/" .. CONFIG_FILE end
+
+local function migrateOldConfig()
+    local old = getOldConfigPath()
+    local newp = getConfigPath()
+    if isfile(old) and not isfile(newp) then
+        pcall(function()
+            if not isfolder(getUserFolder()) then makefolder(getUserFolder()) end
+            writefile(newp, readfile(old))
+        end)
+    end
+end
+
+local function loadConfig()
+    if not isfolder(CONFIG_FOLDER) then makefolder(CONFIG_FOLDER) end
+    if not isfolder(getUserFolder()) then makefolder(getUserFolder()) end
+    migrateOldConfig()
+    local path = getConfigPath()
+    if isfile(path) then
+        local ok, data = pcall(function() return HttpService:JSONDecode(readfile(path)) end)
+        if ok and type(data) == "table" then
+            data.toggles = data.toggles or {}
+            data.inputs = data.inputs or {}
+            data.dropdowns = data.dropdowns or {}
+            data.abilities = data.abilities or {}
+            return data
+        end
+    end
+    return { toggles = {}, inputs = {}, dropdowns = {}, abilities = {} }
+end
+
+local function saveConfig(cfg)
+    if not isfolder(CONFIG_FOLDER) then makefolder(CONFIG_FOLDER) end
+    if not isfolder(getUserFolder()) then makefolder(getUserFolder()) end
+    local ok, err = pcall(function()
+        writefile(getConfigPath(), HttpService:JSONEncode(cfg))
+    end)
+    if not ok then warn("[Config] Save failed:", err) end
+    return ok
+end
+
+getgenv().Config = loadConfig()
+getgenv().Config.toggles = getgenv().Config.toggles or {}
+getgenv().Config.inputs = getgenv().Config.inputs or {}
+getgenv().Config.abilities = getgenv().Config.abilities or {}
+getgenv().AutoAbilitiesEnabled = getgenv().Config.toggles.AutoAbilityToggle or false
+getgenv().AutoReadyEnabled = getgenv().Config.toggles.AutoReadyToggle or false
+getgenv().AutoEventEnabled = getgenv().Config.toggles.AutoEventToggle or false
+
+-- UI Window
+local windowSuccess, Window = pcall(function()
+    return Library:CreateWindow({
+        Title = "ALS Halloween Event",
+        Footer = "Anime Last Stand Script",
+        Icon = 72399447876912,
+        NotifySide = getgenv().Config.inputs.NotificationSide or "Right",
+        ShowCustomCursor = getgenv().Config.toggles.ShowCustomCursor ~= false,
+        Size = UDim2.fromOffset(700, 460),
+    })
+end)
+if not windowSuccess then
+    Window = Library:CreateWindow({Title = "ALS Halloween Event", Footer = "Anime Last Stand Script", Size = UDim2.fromOffset(700,460)})
+end
+
+-- Only keep Ability, Misc, Settings tabs
+local Tabs = {
+    Ability = Window:AddTab("Ability", "star"),
+    Misc = Window:AddTab("Misc", "wrench"),
+    Settings = Window:AddTab("Settings", "settings"),
+}
+
+-- Short references to groups used later
+local GB = {
+    Ability_Left = Tabs.Ability:AddLeftGroupbox("Auto Abilities"),
+    Ability_Right = Tabs.Ability:AddRightGroupbox("Configured Abilities"),
+    Misc_Left = Tabs.Misc:AddLeftGroupbox("Misc Toggles"),
+    Misc_Right = Tabs.Misc:AddRightGroupbox("Misc Settings"),
+    Settings_Left = Tabs.Settings:AddLeftGroupbox("Config"),
+    Settings_Right = Tabs.Settings:AddRightGroupbox("Interface"),
+}
+
+local function notify(title, content, duration)
+    Library:Notify({ Title = title or "ALS", Description = content or "", Time = duration or 3 })
+end
+
+-- Toggle helper
+local Options = Library.Options
+local Toggles = Library.Toggles
+local function addToggle(group, key, text, default, onChanged)
+    group:AddToggle(key, {
+        Text = text,
+        Default = default,
+        Callback = function(val) if onChanged then onChanged(val) end end,
+    })
+    if Toggles[key] then
+        Toggles[key]:OnChanged(function() local val = Toggles[key].Value if onChanged then onChanged(val) end end)
+    end
+end
+
+-- Settings UI
+GB.Settings_Left:AddLabel("Config path: " .. CONFIG_FOLDER .. "/" .. CONFIG_FILE, true)
+GB.Settings_Left:AddButton("Force Save Config Now", function()
+    local ok = saveConfig(getgenv().Config)
+    notify("Config", ok and "Saved" or "Failed", 3)
+end)
+GB.Settings_Left:AddButton("Open Config Folder", function() notify("Config Location", getUserFolder(), 5) end)
+
+GB.Settings_Right:AddToggle("ShowCustomCursor", {
+    Default = getgenv().Config.toggles.ShowCustomCursor ~= false,
+    Text = "Custom Cursor",
+    Callback = function(Value)
+        Library.ShowCustomCursor = Value
+        getgenv().Config.toggles.ShowCustomCursor = Value
+        saveConfig(getgenv().Config)
+    end,
+})
+
+GB.Settings_Right:AddDropdown("NotificationSide", {
+    Values = { "Left", "Right" },
+    Default = getgenv().Config.inputs.NotificationSide or "Right",
+    Text = "Notification Side",
+    Callback = function(Value)
+        Library:SetNotifySide(Value)
+        getgenv().Config.inputs.NotificationSide = Value
+        saveConfig(getgenv().Config)
+    end,
+})
+
+GB.Settings_Right:AddDropdown("DPIDropdown", {
+    Values = { "50%", "75%", "100%", "125%", "150%", "175%", "200%" },
+    Default = getgenv().Config.inputs.DPIScale or "100%",
+    Text = "DPI Scale",
+    Callback = function(Value)
+        Value = Value:gsub("%%", "")
+        local DPI = tonumber(Value)
+        if DPI then
+            Library:SetDPIScale(DPI)
+            getgenv().Config.inputs.DPIScale = Value .. "%"
+            saveConfig(getgenv().Config)
+        end
+    end,
+})
+
+GB.Settings_Right:AddDivider()
+GB.Settings_Right:AddLabel("Menu bind"):AddKeyPicker("MenuKeybind", {
+    Default = "LeftControl",
+    NoUI = true,
+    Text = "Menu keybind",
+    SyncToggleState = false,
+    Mode = "Toggle",
+})
+Library.ToggleKeybind = Options.MenuKeybind
+
+GB.Settings_Right:AddButton("Unload", function() Library:Unload() end)
+
+-- Misc toggles (keep core misc features)
+addToggle(GB.Misc_Left, "AntiAFKToggle", "Anti-AFK", getgenv().Config.toggles.AntiAFKToggle or false, function(v)
+    getgenv().AntiAFKEnabled = v
+    getgenv().Config.toggles.AntiAFKToggle = v
+    saveConfig(getgenv().Config)
+    notify("Anti-AFK", v and "Enabled" or "Disabled", 3)
+end)
+
+addToggle(GB.Misc_Left, "RemoveEnemiesToggle", "Remove Enemies & Units", getgenv().Config.toggles.RemoveEnemiesToggle or false, function(v)
+    getgenv().RemoveEnemiesEnabled = v
+    getgenv().Config.toggles.RemoveEnemiesToggle = v
+    saveConfig(getgenv().Config)
+    notify("Remove Enemies", v and "Enabled" or "Disabled", 3)
+end)
+
+addToggle(GB.Misc_Left, "BlackScreenToggle", "Black Screen Mode", getgenv().Config.toggles.BlackScreenToggle or false, function(v)
+    getgenv().BlackScreenEnabled = v
+    getgenv().Config.toggles.BlackScreenToggle = v
+    saveConfig(getgenv().Config)
+    notify("Black Screen", v and "Enabled" or "Disabled", 3)
+end)
+
+addToggle(GB.Misc_Left, "FPSBoostToggle", "FPS Boost (only out-of-lobby)", getgenv().Config.toggles.FPSBoostToggle or false, function(v)
+    getgenv().FPSBoostEnabled = v
+    getgenv().Config.toggles.FPSBoostToggle = v
+    saveConfig(getgenv().Config)
+    notify("FPS Boost", v and "Enabled" or "Disabled", 3)
+end)
+
+GB.Misc_Right:AddToggle("AutoHideUIToggle", {
+    Default = getgenv().Config.toggles.AutoHideUIToggle or false,
+    Text = "Auto Hide UI on Start",
+    Callback = function(v)
+        getgenv().Config.toggles.AutoHideUIToggle = v
+        saveConfig(getgenv().Config)
+        notify("Auto Hide UI", v and "Enabled" or "Disabled", 3)
+    end,
+})
+
+GB.Misc_Right:AddToggle("AutoExecuteToggle", {
+    Default = getgenv().Config.toggles.AutoExecuteToggle or false,
+    Text = "Auto Execute on Teleport",
+    Callback = function(v)
+        getgenv().Config.toggles.AutoExecuteToggle = v
+        saveConfig(getgenv().Config)
+        if v then
+            writefile("ALSHalloweenEvent/autoexec.txt", "true")
+            notify("Auto Execute", "Enabled - Script will reload on teleport", 3)
+        else
+            if isfile("ALSHalloweenEvent/autoexec.txt") then delfile("ALSHalloweenEvent/autoexec.txt") end
+            notify("Auto Execute", "Disabled", 3)
+        end
+    end,
+})
+
+-- Toggle button (draggable) to open UI
+local ToggleGui = Instance.new("ScreenGui")
+ToggleGui.Name = "ALS_Obsidian_Toggle"
+ToggleGui.ResetOnSpawn = false
+ToggleGui.IgnoreGuiInset = true
+ToggleGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ToggleGui.Parent = game:GetService("CoreGui")
+local ToggleButton = Instance.new("ImageButton")
+ToggleButton.Name = "ToggleButton"
+ToggleButton.Size = UDim2.new(0, 75, 0, 75)
+ToggleButton.Position = UDim2.new(0, 24, 0, 24)
+ToggleButton.BackgroundTransparency = 1
+ToggleButton.Image = "rbxassetid://72399447876912"
+ToggleButton.Active = true
+ToggleButton.Draggable = true
+ToggleButton.Parent = ToggleGui
+local function toggleUIKey()
+    VIM:SendKeyEvent(true, Enum.KeyCode.LeftControl, false, game)
+    task.wait(0.05)
+    VIM:SendKeyEvent(false, Enum.KeyCode.LeftControl, false, game)
+end
+ToggleButton.MouseButton1Click:Connect(toggleUIKey)
+
+-- Auto-hide the UI if configured
+if getgenv().Config.toggles.AutoHideUIToggle then
+    task.spawn(function()
+        task.wait(0.2)
+        if not Library.Unloaded then toggleUIKey() end
+    end)
+end
+
+-- Auto rejoin on disconnect
+task.spawn(function()
+    repeat task.wait() until game.CoreGui:FindFirstChild("RobloxPromptGui")
+    local promptOverlay = game.CoreGui.RobloxPromptGui.promptOverlay
+    promptOverlay.ChildAdded:Connect(function(child)
+        if child.Name == "ErrorPrompt" then
+            task.spawn(function()
+                while true do
+                    local ok = pcall(function()
+                        TeleportService:Teleport(game.PlaceId, Players.LocalPlayer)
+                    end)
+                    if ok then break else task.wait(2) end
+                end
+            end)
+        end
+    end)
+end)
+
+-- Anti-AFK
+task.spawn(function()
+    local vu = game:GetService("VirtualUser")
+    Players.LocalPlayer.Idled:Connect(function()
+        if getgenv().AntiAFKEnabled then
+            vu:Button2Down(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
+            task.wait(1)
+            vu:Button2Up(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
+        end
+    end)
+end)
+
+-- Black screen overlay
+task.spawn(function()
+    local blackScreenGui, blackFrame
+    local function createBlack()
+        if blackScreenGui then return end
+        blackScreenGui = Instance.new("ScreenGui")
+        blackScreenGui.Name = "BlackScreenOverlay"
+        blackScreenGui.DisplayOrder = -999999
+        blackScreenGui.IgnoreGuiInset = true
+        blackScreenGui.ResetOnSpawn = false
+        blackFrame = Instance.new("Frame")
+        blackFrame.Size = UDim2.new(1,0,1,0)
+        blackFrame.BackgroundColor3 = Color3.new(0,0,0)
+        blackFrame.BorderSizePixel = 0
+        blackFrame.ZIndex = -999999
+        blackFrame.Parent = blackScreenGui
+        pcall(function() blackScreenGui.Parent = LocalPlayer.PlayerGui end)
+        pcall(function()
+            if workspace.CurrentCamera then workspace.CurrentCamera.MaxAxisFieldOfView = 0.001 end
+            settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
+        end)
+    end
+    local function removeBlack()
+        if blackScreenGui then blackScreenGui:Destroy() blackScreenGui=nil blackFrame=nil end
+        pcall(function() if workspace.CurrentCamera then workspace.CurrentCamera.MaxAxisFieldOfView = 70 end end)
+    end
+    while true do
+        task.wait(0.5)
+        if getgenv().BlackScreenEnabled then if not blackScreenGui then createBlack() end else if blackScreenGui then removeBlack() end end
+        if Library.Unloaded then removeBlack() break end
+    end
+end)
+
+-- Remove enemies & units loop
+task.spawn(function()
+    while true do
+        task.wait(1)
+        if getgenv().RemoveEnemiesEnabled then
+            pcall(function()
+                local enemies = workspace:FindFirstChild("Enemies")
+                if enemies then
+                    for i = #enemies:GetChildren(),1,-1 do
+                        local enemy = enemies:GetChildren()[i]
+                        if enemy and enemy:IsA("Model") and enemy.Name ~= "Boss" then enemy:Destroy() end
+                    end
+                end
+                local spawnedunits = workspace:FindFirstChild("SpawnedUnits")
+                if spawnedunits then
+                    for _, su in pairs(spawnedunits:GetChildren()) do if su:IsA("Model") then su:Destroy() end end
+                end
+            end)
+        end
+        if Library.Unloaded then break end
+    end
+end)
+
+-- FPS boost simplified (runs periodically)
+task.spawn(function()
+    while true do
+        task.wait(10)
+        if getgenv().FPSBoostEnabled then
+            pcall(function()
+                local lighting = game:GetService("Lighting")
+                for _, child in ipairs(lighting:GetChildren()) do child:Destroy() end
+                lighting.Ambient = Color3.new(1,1,1)
+                lighting.Brightness = 1
+                lighting.GlobalShadows = false
+                lighting.FogEnd = 100000
+                lighting.FogStart = 100000
+                lighting.ClockTime = 12
+                lighting.GeographicLatitude = 0
+                for _, obj in ipairs(game.Workspace:GetDescendants()) do
+                    if obj:IsA("BasePart") then
+                        if obj:IsA("Part") or obj:IsA("MeshPart") or obj:IsA("WedgePart") or obj:IsA("CornerWedgePart") then
+                            obj.Material = Enum.Material.SmoothPlastic
+                            for _, t in ipairs(obj:GetChildren()) do if t:IsA("Texture") or t:IsA("Decal") then t:Destroy() end end
+                            if obj:IsA("MeshPart") then obj.TextureID = "" end
+                        end
+                        if obj:IsA("Decal") then obj:Destroy() end
+                    end
+                    if obj:IsA("SurfaceAppearance") then obj:Destroy() end
+                end
+            end)
+        end
+        if Library.Unloaded then break end
+    end
+end)
+
+-- Utility to read client data (used for Ability UI)
+local function getClientData()
+    local ok, data = pcall(function()
+        local modulePath = RS:FindFirstChild("Modules"):WaitForChild("ClientData")
+        if modulePath and modulePath:IsA("ModuleScript") then
+            return require(modulePath)
+        end
+        return nil
+    end)
+    return ok and data or nil
+end
+
+-- Utility to fetch tower info module
+local function getTowerInfo(unitName)
+    local ok, data = pcall(function()
+        local towerInfoPath = RS:WaitForChild("Modules"):WaitForChild("TowerInfo")
+        local towerModule = towerInfoPath:FindFirstChild(unitName)
+        if towerModule and towerModule:IsA("ModuleScript") then
+            return require(towerModule)
+        end
+        return nil
+    end)
+    return ok and data or nil
+end
+
+-- Gather all abilities for a unit name
+local function getAllAbilities(unitName)
+    if not unitName or unitName == "" then return {} end
+    local towerNameToCheck = unitName
+    if unitName == "TuskSummon_Act4" then towerNameToCheck = "JohnnyGodly" end
+    local towerInfo = getTowerInfo(towerNameToCheck)
+    if not towerInfo then return {} end
+    local abilities = {}
+    for level = 0,50 do
+        if towerInfo[level] then
+            if towerInfo[level].Ability then
+                local a = towerInfo[level].Ability
+                local nm = a.Name
+                if not abilities[nm] then
+                    local hasRealAttribute = false
+                    if a.AttributeRequired and type(a.AttributeRequired) == "table" then
+                        if a.AttributeRequired.Name ~= "JUST_TO_DISPLAY_IN_LOBBY" then hasRealAttribute = true end
+                    elseif a.AttributeRequired and type(a.AttributeRequired) ~= "table" then
+                        hasRealAttribute = true
+                    end
+                    abilities[nm] = { name = nm, cooldown = a.Cd, requiredLevel = level, isGlobal = a.IsCdGlobal or false, isAttribute = hasRealAttribute }
+                end
+            end
+            if towerInfo[level].Abilities then
+                for _, a in pairs(towerInfo[level].Abilities) do
+                    local nm = a.Name
+                    if not abilities[nm] then
+                        local hasRealAttribute = false
+                        if a.AttributeRequired and type(a.AttributeRequired) == "table" then
+                            if a.AttributeRequired.Name ~= "JUST_TO_DISPLAY_IN_LOBBY" then hasRealAttribute = true end
+                        elseif a.AttributeRequired and type(a.AttributeRequired) ~= "table" then
+                            hasRealAttribute = true
+                        end
+                        abilities[nm] = { name = nm, cooldown = a.Cd, requiredLevel = level, isGlobal = a.IsCdGlobal or false, isAttribute = hasRealAttribute }
+                    end
+                end
+            end
+        end
+    end
+    return abilities
+end
+
+-- Unit abilities config table
+getgenv().UnitAbilities = getgenv().UnitAbilities or {}
+
+-- Build Ability UI similar to original (reads client data slots, lists unit abilities)
+local function buildAutoAbilityUI()
+    local clientData = getClientData()
+    if not clientData or not clientData.Slots then
+        notify("Auto Ability", "ClientData not available yet, retrying...", 3)
+        return
+    end
+    local sortedSlots = {"Slot1","Slot2","Slot3","Slot4","Slot5","Slot6"}
+    for _, slotName in ipairs(sortedSlots) do
+        local slotData = clientData.Slots[slotName]
+        if slotData and slotData.Value then
+            local unitName = slotData.Value
+            local abilities = getAllAbilities(unitName)
+            if next(abilities) then
+                GB.Ability_Right:AddDivider()
+                GB.Ability_Right:AddLabel(unitName .. " (" .. slotName .. " • Lvl " .. tostring(slotData.Level or 0) .. ")")
+                if not getgenv().UnitAbilities[unitName] then getgenv().UnitAbilities[unitName] = {} end
+                local sortedAbilities = {}
+                for abilityName, data in pairs(abilities) do table.insert(sortedAbilities, { name = abilityName, data = data }) end
+                table.sort(sortedAbilities, function(a,b) return a.data.requiredLevel < b.data.requiredLevel end)
+                for _, ab in ipairs(sortedAbilities) do
+                    local abilityName = ab.name
+                    local abilityData = ab.data
+                    if not getgenv().UnitAbilities[unitName][abilityName] then
+                        getgenv().UnitAbilities[unitName][abilityName] = { enabled = false, onlyOnBoss=false, specificWave=nil, requireBossInRange=false, delayAfterBossSpawn=false, useOnWave=false }
+                    end
+                    local cfg = getgenv().UnitAbilities[unitName][abilityName]
+                    local saved = getgenv().Config.abilities[unitName] and getgenv().Config.abilities[unitName][abilityName]
+                    local defaultToggle = saved and saved.enabled or false
+                    if saved then
+                        cfg.enabled = saved.enabled or false
+                        cfg.onlyOnBoss = saved.onlyOnBoss or false
+                        cfg.specificWave = saved.specificWave
+                        cfg.requireBossInRange = saved.requireBossInRange or false
+                        cfg.delayAfterBossSpawn = saved.delayAfterBossSpawn or false
+                        cfg.useOnWave = saved.useOnWave or false
+                    end
+                    local abilityInfo = abilityName .. " (L" .. abilityData.requiredLevel .. " • " .. tostring(abilityData.cooldown) .. "s" .. (abilityData.isAttribute and " • 🔒" or "") .. ")"
+                    addToggle(GB.Ability_Right, unitName .. "_" .. abilityName .. "_Toggle", abilityInfo, defaultToggle, function(v)
+                        cfg.enabled = v
+                        getgenv().Config.abilities[unitName] = getgenv().Config.abilities[unitName] or {}
+                        getgenv().Config.abilities[unitName][abilityName] = getgenv().Config.abilities[unitName][abilityName] or {}
+                        getgenv().Config.abilities[unitName][abilityName].enabled = v
+                        saveConfig(getgenv().Config)
+                    end)
+
+                    -- Simple conditions dropdown (multi)
+                    local modifierKey = unitName .. "_" .. abilityName .. "_Modifiers"
+                    GB.Ability_Right:AddDropdown(modifierKey, {
+                        Values = {"Only On Boss","Boss In Range","Delay After Boss Spawn","On Wave"},
+                        Multi = true,
+                        Text = "  > Conditions",
+                        Callback = function(Value)
+                            local selected = {}
+                            if type(Value) == "table" then
+                                for k,v in pairs(Value) do if v == true then selected[k] = true end end
+                            end
+                            cfg.onlyOnBoss = selected["Only On Boss"] or false
+                            cfg.requireBossInRange = selected["Boss In Range"] or false
+                            cfg.delayAfterBossSpawn = selected["Delay After Boss Spawn"] or false
+                            cfg.useOnWave = selected["On Wave"] or false
+                            getgenv().Config.abilities[unitName] = getgenv().Config.abilities[unitName] or {}
+                            local store = getgenv().Config.abilities[unitName]
+                            store[abilityName] = store[abilityName] or {}
+                            store[abilityName].onlyOnBoss = cfg.onlyOnBoss
+                            store[abilityName].requireBossInRange = cfg.requireBossInRange
+                            store[abilityName].delayAfterBossSpawn = cfg.delayAfterBossSpawn
+                            store[abilityName].useOnWave = cfg.useOnWave
+                            saveConfig(getgenv().Config)
+                        end,
+                    })
+
+                    GB.Ability_Right:AddInput(unitName .. "_" .. abilityName .. "_Wave", {
+                        Text = "  > Wave Number",
+                        Default = (saved and saved.specificWave and tostring(saved.specificWave)) or "",
+                        Numeric = true,
+                        Finished = true,
+                        Placeholder = "Required if 'On Wave' selected",
+                        Callback = function(text)
+                            local num = tonumber(text)
+                            cfg.specificWave = num
+                            getgenv().Config.abilities[unitName] = getgenv().Config.abilities[unitName] or {}
+                            getgenv().Config.abilities[unitName][abilityName] = getgenv().Config.abilities[unitName][abilityName] or {}
+                            getgenv().Config.abilities[unitName][abilityName].specificWave = num
+                            saveConfig(getgenv().Config)
+                        end,
+                    })
+                end
+            end
+        end
+    end
+end
+
+-- Try to build ability UI after a delay (retry a few times)
+task.spawn(function()
+    task.wait(2)
+    local maxRetries, retryDelay = 10, 3
+    for i=1,maxRetries do
+        local ok = pcall(function()
+            local cd = getClientData()
+            if cd and cd.Slots then buildAutoAbilityUI() else if i <= 3 then notify("Auto Ability","Loading units... ("..i.."/"..maxRetries..")",2) end end
+        end)
+        if ok then break end
+        task.wait(retryDelay)
+    end
+end)
+
+-- Auto Abilities runtime logic (simplified and faithful to original behavior)
+task.spawn(function()
+    local Towers = workspace:WaitForChild("Towers", 10)
+    local abilityCooldowns = {}
+    local towerInfoCache = {}
+    local generalBossSpawnTime = nil
+    local lastWave = 0
+
+    local function getTowerInfoCached(towerName)
+        if towerInfoCache[towerName] then return towerInfoCache[towerName] end
+        local t = getTowerInfo(towerName)
+        if t then towerInfoCache[towerName] = t end
+        return t
+    end
+
+    local function getAbilityData(towerName, abilityName)
+        local info = getTowerInfoCached(towerName)
+        if not info then return nil end
+        for level=0,50 do
+            if info[level] then
+                if info[level].Ability and info[level].Ability.Name == abilityName then
+                    local a = info[level].Ability
+                    return { cooldown=a.Cd, requiredLevel=level, isGlobal=a.IsCdGlobal }
+                end
+                if info[level].Abilities then
+                    for _, a in pairs(info[level].Abilities) do
+                        if a.Name == abilityName then return { cooldown=a.Cd, requiredLevel=level, isGlobal=a.IsCdGlobal } end
+                    end
+                end
+            end
+        end
+        return nil
+    end
+
+    local function getCurrentWave()
+        local ok, result = pcall(function()
+            local gui = LocalPlayer.PlayerGui:FindFirstChild("Top") if not gui then return 0 end
+            local frame = gui:FindFirstChild("Frame") if not frame then return 0 end
+            frame = frame:FindFirstChild("Frame") if not frame then return 0 end
+            frame = frame:FindFirstChild("Frame") if not frame then return 0 end
+            frame = frame:FindFirstChild("Frame") if not frame then return 0 end
+            local button = frame:FindFirstChild("TextButton") if not button then return 0 end
+            local children = button:GetChildren() if #children < 3 then return 0 end
+            local text = children[3].Text
+            return tonumber(text) or 0
+        end)
+        return ok and result or 0
+    end
+
+    local function bossExists()
+        local ok,res = pcall(function()
+            local enemies = workspace:FindFirstChild("Enemies") if not enemies then return false end
+            return enemies:FindFirstChild("Boss") ~= nil
+        end)
+        return ok and res
+    end
+
+    local function bossReadyForAbilities()
+        if bossExists() then
+            if not generalBossSpawnTime then generalBossSpawnTime = tick() end
+            return (tick() - generalBossSpawnTime) >= 2
+        else
+            generalBossSpawnTime = nil
+            return false
+        end
+    end
+
+    local function isOnCooldown(towerName, abilityName)
+        local d = getAbilityData(towerName, abilityName) if not d or not d.cooldown then return false end
+        local key = towerName .. "_" .. abilityName
+        local last = abilityCooldowns[key]
+        if not last then return false end
+        return (tick() - last) < (d.cooldown)
+    end
+
+    local function setAbilityUsed(towerName, abilityName) abilityCooldowns[towerName.."_"..abilityName] = tick() end
+
+    local function hasAbilityBeenUnlocked(towerName, abilityName, towerLevel)
+        local d = getAbilityData(towerName, abilityName)
+        return d and towerLevel >= d.requiredLevel
+    end
+
+    local function useAbility(tower, abilityName)
+        if tower then
+            pcall(function() RS.Remotes.Ability:InvokeServer(tower, abilityName) end)
+        end
+    end
+
+    while true do
+        task.wait(1)
+        if getgenv().AutoAbilitiesEnabled then
+            pcall(function()
+                local currentWave = getCurrentWave()
+                if currentWave < lastWave then
+                    abilityCooldowns = {}
+                    towerInfoCache = {}
+                end
+                lastWave = currentWave
+                if not Towers then return end
+                for unitName, abilitiesConfig in pairs(getgenv().UnitAbilities) do
+                    local tower = Towers:FindFirstChild(unitName)
+                    if tower then
+                        local towerLevel = 0
+                        local u = tower:FindFirstChild("Upgrade")
+                        if u and u:IsA("ValueBase") then towerLevel = u.Value or 0 end
+                        for abilityName, cfg in pairs(abilitiesConfig) do
+                            if cfg.enabled then
+                                local shouldUse = true
+                                if not hasAbilityBeenUnlocked(unitName, abilityName, towerLevel) then shouldUse=false end
+                                if shouldUse and isOnCooldown(unitName, abilityName) then shouldUse=false end
+                                if shouldUse and cfg.onlyOnBoss then if not bossExists() or not bossReadyForAbilities() then shouldUse=false end end
+                                if shouldUse and cfg.useOnWave and cfg.specificWave then if currentWave ~= cfg.specificWave then shouldUse=false end end
+                                if shouldUse and cfg.requireBossInRange then
+                                    local boss = workspace:FindFirstChild("Enemies") and workspace.Enemies:FindFirstChild("Boss")
+                                    if not boss then shouldUse=false end
+                                end
+                                if shouldUse then
+                                    useAbility(tower, abilityName)
+                                    setAbilityUsed(unitName, abilityName)
+                                end
+                            end
+                        end
+                    end
+                end
+            end)
+        end
+        if Library.Unloaded then break end
+    end
+end)
+
+-- Save config periodically
+task.spawn(function()
+    while true do
+        task.wait(15)
+        pcall(function() saveConfig(getgenv().Config) end)
+        if Library.Unloaded then break end
+    end
+end)
+
+-- Notification that script loaded
+task.wait(0.1)
+notify("ALS Halloween Event", "Reduced script loaded successfully!", 5)
+
