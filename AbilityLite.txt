@@ -104,11 +104,15 @@ task.spawn(function()
     end
 end)
 
--- Utility: read client data & tower info
+-- Lấy ClientData module (đúng vị trí trong LocalPlayer)
 local function getClientData()
     local ok, data = pcall(function()
-        local modulePath = RS:FindFirstChild("Modules") and RS.Modules:FindFirstChild("ClientData")
-        if modulePath and modulePath:IsA("ModuleScript") then return require(modulePath) end
+        local ps = LocalPlayer:FindFirstChild("PlayerScripts")
+        if not ps then return nil end
+        local client = ps:FindFirstChild("ClientData")
+        if client and client:IsA("ModuleScript") then
+            return require(client)
+        end
         return nil
     end)
     return ok and data or nil
