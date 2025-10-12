@@ -1,0 +1,275 @@
+repeat task.wait() until game:IsLoaded()
+
+local repo = "https://raw.githubusercontent.com/byorl/Obsidian/main/"
+local Library = loadstring(game:HttpGet(repo .. "Library.lua"))()
+
+local Players = game:GetService("Players")
+local HttpService = game:GetService("HttpService")
+local RS = game:GetService("ReplicatedStorage")
+local VIM = game:GetService("VirtualInputManager")
+local LocalPlayer = Players.LocalPlayer
+
+local CONFIG_FILE = "AbilityLiteConfig.json"
+local CONFIG_FOLDER = "ALSHalloweenEvent"
+local USER_ID = tostring(LocalPlayer.UserId)
+local function getConfigPath() return CONFIG_FOLDER .. "/" .. USER_ID .. "/" .. CONFIG_FILE end
+local function getUserFolder() return CONFIG_FOLDER .. "/" .. USER_ID end
+
+-- Migrate helper (nếu cần)
+local function ensureFolders()
+    if not isfolder(CONFIG_FOLDER) then makefolder(CONFIG_FOLDER) end
+    if not isfolder(getUserFolder()) then makefolder(getUserFolder()) end
+end
+
+local function loadConfig()
+    ensureFolders()
+    local path = getConfigPath()
+    if isfile(path) then
+        local ok, data = pcall(function() return HttpService:JSONDecode(readfile(path)) end)
+        if ok and type(data) == "table" then
+            data.abilities = data.abilities or {}
+            data.toggles = data.toggles or {}
+            return data
+        end
+    end
+    return { toggles = {}, abilities = {} }
+end
+
+local function saveConfig(cfg)
+    ensureFolders()
+    local ok, err = pcall(function() writefile(getConfigPath(), HttpService:JSONEncode(cfg)) end)
+    if not ok then warn("[AbilityLite] Lưu config lỗi:", err) end
+    return ok
+end
+
+-- Load config at start
+getgenv().AbilityLiteConfig = loadConfig()
+getgenv().AutoAbilitiesEnabled = getgenv().AbilityLiteConfig.toggles.AutoAbilityToggle or false
+
+-- Create a small window with only Ability tab
+local windowSuccess, Window = pcall(function()
+    return Library:CreateWindow({
+        Title = "Tự động kỹ năng (Lite)",
+        Footer = "Auto Ability Lite",
+        Size = UDim2.fromOffset(520, 380),
+        ShowCustomCursor = false,
+    })
+end)
+if not windowSuccess then
+    Window = Library:CreateWindow({ Title = "Tự động kỹ năng (Lite)", Size = UDim2.fromOffset(520,380) })
+end
+
+local Tab = Window:AddTab("Ability", "star")
+local Left = Tab:AddLeftGroupbox("Cài đặt chung")
+local Right = Tab:AddRightGroupbox("Danh sách kỹ năng")
+
+local function notify(title, desc, t)
+    Library:Notify({ Title = title or "AbilityLite", Description = desc or "", Time = t or 3 })
+end
+
+-- Helper to add toggle (simple wrapper)
+local Options = Library.Options
+local Toggles = Library.Toggles
+local function addToggleSimple(group, key, text, default, cb)
+    group:AddToggle(key, {
+        Text = text,
+        Default = default,
+        Callback = function(v) if cb then cb(v) end end,
+    })
+    if Toggles[key] then
+        Toggles[key]:OnChanged(function() local val = Toggles[key].Value if cb then cb(val) end end)
+    end
+end
+
+-- Main toggle: Bật/Tắt Auto Ability
+addToggleSimple(Left, "AutoAbilityToggle", "Bật tự động kỹ năng", getgenv().AutoAbilitiesEnabled, function(v)
+    getgenv().AutoAbilitiesEnabled = v
+    getgenv().AbilityLiteConfig.toggles.AutoAbilityToggle = v
+    saveConfig(getgenv().AbilityLiteConfig)
+    notify("Tự động kỹ năng", v and "Đã bật" or "Đã tắt", 3)
+end)
+
+-- Force save button
+Left:AddButton("Lưu cấu hình ngay", function()
+    local ok = saveConfig(getgenv().AbilityLiteConfig)
+    notify("Lưu cấu hình", ok and "Lưu thành công" or "Lưu thất bại", 3)
+end)
+
+-- Auto load UI state: set toggle if config says true
+task.spawn(function()
+    task.wait(0.2)
+    if getgenv().AbilityLiteConfig.toggles.AutoAbilityToggle then
+        if Options.AutoAbilityToggle then Options.AutoAbilityToggle:SetValue(true) end
+        getgenv().AutoAbilitiesEnabled = true
+    end
+end)
+
+-- Utility: read client data & tower info
+local function getClientData()
+    local ok, data = pcall(function()
+        local modulePath = RS:FindFirstChild("Modules") and RS.Modules:FindFirstChild("ClientData")
+        if modulePath and modulePath:IsA("ModuleScript") then return require(modulePath) end
+        return nil
+    end)
+    return ok and data or nil
+end
+
+local function getTowerInfo(unitName)
+    local ok, data = pcall(function()
+        local towerInfoPath = RS:WaitForChild("Modules"):WaitForChild("TowerInfo")
+        local towerModule = towerInfoPath:FindFirstChild(unitName)
+        if towerModule and towerModule:IsA("ModuleScript") then return require(towerModule) end
+        return nil
+    end)
+    return ok and data or nil
+end
+
+local function getAllAbilities(unitName)
+    if not unitName or unitName == "" then return {} end
+    local towerNameToCheck = unitName
+    if unitName == "TuskSummon_Act4" then towerNameToCheck = "JohnnyGodly" end
+    local towerInfo = getTowerInfo(towerNameToCheck)
+    if not towerInfo then return {} end
+    local abilities = {}
+    for level = 0,50 do
+        if towerInfo[level] then
+            if towerInfo[level].Ability then
+                local a = towerInfo[level].Ability
+                local nm = a.Name
+                if not abilities[nm] then
+                    abilities[nm] = { name = nm, cooldown = a.Cd, requiredLevel = level }
+                end
+            end
+            if towerInfo[level].Abilities then
+                for _, a in pairs(towerInfo[level].Abilities) do
+                    local nm = a.Name
+                    if not abilities[nm] then abilities[nm] = { name = nm, cooldown = a.Cd, requiredLevel = level } end
+                end
+            end
+        end
+    end
+    return abilities
+end
+
+-- Build simple ability list UI
+local function buildAbilityList()
+    Right:ClearAllChildren()
+    Right:AddLabel("Danh sách unit và kỹ năng (tự tải từ ClientData)", true)
+    local cd = getClientData()
+    if not cd or not cd.Slots then
+        Right:AddLabel("Không tìm thấy ClientData. Vui lòng vào phòng chơi và thử lại.", true)
+        return
+    end
+    local slots = {"Slot1","Slot2","Slot3","Slot4","Slot5","Slot6"}
+    for _, slot in ipairs(slots) do
+        local s = cd.Slots[slot]
+        if s and s.Value then
+            local unitName = s.Value
+            local abilities = getAllAbilities(unitName)
+            Right:AddDivider()
+            Right:AddLabel(unitName .. " (" .. slot .. " • Lvl " .. tostring(s.Level or 0) .. ")")
+            if next(abilities) then
+                for aname, info in pairs(abilities) do
+                    local key = unitName .. "_" .. aname .. "_Toggle"
+                    local initial = false
+                    if getgenv().AbilityLiteConfig.abilities[unitName] and getgenv().AbilityLiteConfig.abilities[unitName][aname] then
+                        initial = getgenv().AbilityLiteConfig.abilities[unitName][aname].enabled or false
+                    end
+                    Right:AddToggle(key, {
+                        Text = aname .. " (L" .. info.requiredLevel .. " • " .. tostring(info.cooldown) .. "s)",
+                        Default = initial,
+                        Callback = function(v)
+                            getgenv().AbilityLiteConfig.abilities[unitName] = getgenv().AbilityLiteConfig.abilities[unitName] or {}
+                            getgenv().AbilityLiteConfig.abilities[unitName][aname] = getgenv().AbilityLiteConfig.abilities[unitName][aname] or {}
+                            getgenv().AbilityLiteConfig.abilities[unitName][aname].enabled = v
+                            saveConfig(getgenv().AbilityLiteConfig)
+                        end,
+                    })
+                end
+            else
+                Right:AddLabel("Không có kỹ năng tìm thấy cho unit này.", true)
+            end
+        end
+    end
+end
+
+-- Try build list after short delay (with retries)
+task.spawn(function()
+    task.wait(1)
+    for i=1,8 do
+        local ok = pcall(function()
+            local cd = getClientData()
+            if cd and cd.Slots then
+                buildAbilityList()
+            else
+                if i <= 3 then notify("Auto Ability Lite", "Đang tải dữ liệu unit... ("..i..")", 2) end
+            end
+        end)
+        if ok then break end
+        task.wait(2)
+    end
+end)
+
+-- Auto ability runtime (simple)
+task.spawn(function()
+    local Towers = workspace:WaitForChild("Towers", 10)
+    local abilityCooldowns = {}
+
+    local function getAbilityData(towerName, abilityName)
+        local info = getTowerInfo(towerName)
+        if not info then return nil end
+        for level=0,50 do
+            if info[level] then
+                if info[level].Ability and info[level].Ability.Name == abilityName then
+                    local a = info[level].Ability
+                    return { cooldown=a.Cd, requiredLevel=level }
+                end
+                if info[level].Abilities then
+                    for _, a in pairs(info[level].Abilities) do
+                        if a.Name == abilityName then return { cooldown=a.Cd, requiredLevel=level } end
+                    end
+                end
+            end
+        end
+        return nil
+    end
+
+    local function isOnCooldown(unitName, abilityName)
+        local d = getAbilityData(unitName, abilityName) if not d or not d.cooldown then return false end
+        local key = unitName .. "_" .. abilityName
+        local last = abilityCooldowns[key]
+        if not last then return false end
+        return (tick() - last) < (d.cooldown)
+    end
+
+    local function setUsed(unitName, abilityName) abilityCooldowns[unitName.."_"..abilityName] = tick() end
+
+    while true do
+        task.wait(1)
+        if getgenv().AutoAbilitiesEnabled then
+            pcall(function()
+                for unitName, abilities in pairs(getgenv().AbilityLiteConfig.abilities or {}) do
+                    local tower = workspace:FindFirstChild("Towers") and workspace.Towers:FindFirstChild(unitName)
+                    if tower then
+                        local u = tower:FindFirstChild("Upgrade")
+                        local lvl = (u and u.Value) or 0
+                        for abilityName, info in pairs(abilities) do
+                            if info.enabled then
+                                local data = getAbilityData(unitName, abilityName)
+                                if data and lvl >= data.requiredLevel and not isOnCooldown(unitName, abilityName) then
+                                    pcall(function() RS.Remotes.Ability:InvokeServer(tower, abilityName) end)
+                                    setUsed(unitName, abilityName)
+                                end
+                            end
+                        end
+                    end
+                end
+            end)
+        end
+        if Library.Unloaded then break end
+    end
+end)
+
+-- Final notify
+task.wait(0.1)
+notify("Auto Ability Lite", "Script đã tải — mở tab Ability để cấu hình", 5)
