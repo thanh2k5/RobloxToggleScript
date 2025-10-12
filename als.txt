@@ -98,6 +98,18 @@ local GB = {
     Settings_Right = Tabs.Settings:AddRightGroupbox("Interface"),
 }
 
+GB.Ability_Left:AddToggle("AutoAbilityToggle", {
+    Text = "Enable Auto Abilities",
+    Default = getgenv().Config.toggles.AutoAbilityToggle or false,
+    Callback = function(Value)
+        getgenv().AutoAbilitiesEnabled = Value
+        getgenv().Config.toggles.AutoAbilityToggle = Value
+        saveConfig(getgenv().Config)
+        notify("Auto Abilities", Value and "Enabled" or "Disabled", 3)
+    end,
+})
+
+
 local function notify(title, content, duration)
     Library:Notify({ Title = title or "ALS", Description = content or "", Time = duration or 3 })
 end
