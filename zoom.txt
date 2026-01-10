@@ -1,75 +1,120 @@
-local player = game.Players.LocalPlayer
-local camera = workspace.CurrentCamera
-local uis = game:GetService("UserInputService")
+local Players = game:GetService("Players")
+local UIS = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
 
--- Cài đặt zoom mặc định
-local zoom = 10
+local player = Players.LocalPlayer
+local camera = workspace.CurrentCamera
+
+-- ===== CONFIG =====
+local DEFAULT_ZOOM = 10
+local MIN_ZOOM = 2
+local MAX_ZOOM = 200       -- tăng xa hơn (bạn có thể để 300/500 tùy game cho phép)
+local STEP_TAP = 2         -- bấm 1 cái tăng/giảm bao nhiêu
+local SPEED_HOLD = 120     -- giữ để zoom: đơn vị studs/giây (mượt)
+
+-- Camera setup
 camera.CameraType = Enum.CameraType.Custom
 player.CameraMode = Enum.CameraMode.Classic
+
+local zoom = DEFAULT_ZOOM
 player.CameraMinZoomDistance = zoom
 player.CameraMaxZoomDistance = zoom
 
--- Tạo GUI
-local gui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
+local function applyZoom(z)
+	zoom = math.clamp(z, MIN_ZOOM, MAX_ZOOM)
+	player.CameraMinZoomDistance = zoom
+	player.CameraMaxZoomDistance = zoom
+end
+
+-- ===== GUI =====
+local gui = Instance.new("ScreenGui")
 gui.Name = "ZoomGui"
 gui.ResetOnSpawn = false
+gui.Parent = player:WaitForChild("PlayerGui")
 
-local frame = Instance.new("Frame", gui)
+local frame = Instance.new("Frame")
+frame.Parent = gui
 frame.Size = UDim2.new(0, 40, 0, 40)
-frame.Position = UDim2.new(0, 10, 0.7, 0) -- bên trái
+frame.Position = UDim2.new(0, 10, 0.7, 0)
 frame.BackgroundTransparency = 1
+frame.Active = true -- để kéo mượt hơn (mobile)
 
--- Nút toggle ≡
-local toggle = Instance.new("TextButton", frame)
+-- Toggle ≡
+local toggle = Instance.new("TextButton")
+toggle.Parent = frame
 toggle.Size = UDim2.new(0, 15, 0, 15)
 toggle.Position = UDim2.new(0, 12, 0, 0)
 toggle.Text = "≡"
 toggle.BackgroundColor3 = Color3.fromRGB(200, 200, 200)
 toggle.TextSize = 10
 
--- Nút +
-local plus = Instance.new("TextButton", frame)
+-- +
+local plus = Instance.new("TextButton")
+plus.Parent = frame
 plus.Size = UDim2.new(0, 18, 0, 18)
 plus.Position = UDim2.new(0, 2, 0, 20)
 plus.Text = "+"
 plus.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
 plus.TextSize = 14
 
--- Nút -
-local minus = Instance.new("TextButton", frame)
+-- -
+local minus = Instance.new("TextButton")
+minus.Parent = frame
 minus.Size = UDim2.new(0, 18, 0, 18)
 minus.Position = UDim2.new(0, 20, 0, 20)
 minus.Text = "-"
 minus.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
 minus.TextSize = 14
 
--- Logic zoom
-local zooming = false
+-- ===== HOLD ZOOM (tối ưu) =====
+local holdDir = 0 -- -1 zoom gần, +1 zoom xa
+local holdConn = nil
 
-local function doZoom(change)
-	zoom = math.clamp(zoom + change, 2, 50)
-	player.CameraMinZoomDistance = zoom
-	player.CameraMaxZoomDistance = zoom
-end
-
-local function startZoomLoop(change)
-	if zooming then return end
-	zooming = true
-	while zooming do
-		doZoom(change)
-		task.wait(0.05)
+local function stopHold()
+	holdDir = 0
+	if holdConn then
+		holdConn:Disconnect()
+		holdConn = nil
 	end
 end
 
-plus.MouseButton1Down:Connect(function() startZoomLoop(-1) end)
-plus.TouchTap:Connect(function() doZoom(-1) end)
-plus.InputEnded:Connect(function() zooming = false end)
+local function startHold(dir)
+	holdDir = dir
+	if holdConn then return end
+	holdConn = RunService.RenderStepped:Connect(function(dt)
+		if holdDir == 0 then return end
+		applyZoom(zoom + holdDir * SPEED_HOLD * dt)
+	end)
+end
 
-minus.MouseButton1Down:Connect(function() startZoomLoop(1) end)
-minus.TouchTap:Connect(function() doZoom(1) end)
-minus.InputEnded:Connect(function() zooming = false end)
+-- Tap 1 cái
+plus.MouseButton1Click:Connect(function() applyZoom(zoom - STEP_TAP) end)  -- zoom gần hơn
+minus.MouseButton1Click:Connect(function() applyZoom(zoom + STEP_TAP) end) -- zoom xa hơn
+plus.TouchTap:Connect(function() applyZoom(zoom - STEP_TAP) end)
+minus.TouchTap:Connect(function() applyZoom(zoom + STEP_TAP) end)
 
--- Ẩn/hiện nút zoom
+-- Hold (PC + Mobile)
+plus.MouseButton1Down:Connect(function() startHold(-1) end)
+minus.MouseButton1Down:Connect(function() startHold(1) end)
+
+plus.MouseButton1Up:Connect(stopHold)
+minus.MouseButton1Up:Connect(stopHold)
+
+plus.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.Touch then stopHold() end
+end)
+minus.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.Touch then stopHold() end
+end)
+
+UIS.InputEnded:Connect(function(input)
+	-- thả tay ra ngoài nút vẫn dừng (mobile)
+	if input.UserInputType == Enum.UserInputType.Touch then
+		stopHold()
+	end
+end)
+
+-- ===== Ẩn/hiện =====
 local menuVisible = true
 toggle.MouseButton1Click:Connect(function()
 	menuVisible = not menuVisible
@@ -77,7 +122,7 @@ toggle.MouseButton1Click:Connect(function()
 	minus.Visible = menuVisible
 end)
 
--- Kéo menu bằng cảm ứng
+-- ===== Kéo menu (mobile) =====
 local dragging = false
 local dragStart, startPos
 
@@ -89,7 +134,7 @@ frame.InputBegan:Connect(function(input)
 	end
 end)
 
-uis.InputChanged:Connect(function(input)
+UIS.InputChanged:Connect(function(input)
 	if dragging and input.UserInputType == Enum.UserInputType.Touch then
 		local delta = input.Position - dragStart
 		frame.Position = UDim2.new(
@@ -99,75 +144,11 @@ uis.InputChanged:Connect(function(input)
 	end
 end)
 
-uis.InputEnded:Connect(function(input)
+UIS.InputEnded:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.Touch then
 		dragging = false
 	end
 end)
--- Hover Toggle Script (One Fruit Simulator, Executor Safe, Mobile Friendly)
-local player = game.Players.LocalPlayer
-local RunService = game:GetService("RunService")
 
--- Config
-local hoverVel = Vector3.new(0, 0.1, 0)
-local hoverForce = Vector3.new(0, math.huge, 0)
-local toggleState = false
-local bv = nil
-
--- GUI Toggle Button
-local gui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
-gui.Name = "HoverToggleUI"
-gui.ResetOnSpawn = false
-
-local button = Instance.new("TextButton")
-button.Size = UDim2.new(0, 120, 0, 40)
-button.Position = UDim2.new(0, 20, 0, 100)
-button.BackgroundColor3 = Color3.fromRGB(50, 50, 255)
-button.TextColor3 = Color3.new(1, 1, 1)
-button.Font = Enum.Font.SourceSansBold
-button.TextSize = 20
-button.Text = "Hover: OFF"
-button.Parent = gui
-
--- Hover Setup
-local function createHover()
-    local char = player.Character
-    if not char then return end
-    local hrp = char:WaitForChild("HumanoidRootPart")
-
-    if not bv then
-        bv = Instance.new("BodyVelocity")
-        bv.Name = "HoverStealth"
-        bv.MaxForce = hoverForce
-        bv.Velocity = hoverVel
-        bv.P = 3000
-    end
-    bv.Parent = hrp
-
-    RunService.RenderStepped:Connect(function()
-        if toggleState and bv and bv.Parent then
-            bv.Velocity = hoverVel
-        end
-    end)
-end
-
--- Toggle Logic
-button.MouseButton1Click:Connect(function()
-    toggleState = not toggleState
-    button.Text = toggleState and "Hover: ON" or "Hover: OFF"
-
-    if toggleState then
-        createHover()
-    elseif bv then
-        bv.Parent = nil
-    end
-end)
-
--- Auto-reapply on respawn
-player.CharacterAdded:Connect(function()
-    bv = nil
-    if toggleState then
-        wait(1)
-        createHover()
-    end
-end)
+-- Apply default
+applyZoom(DEFAULT_ZOOM)
