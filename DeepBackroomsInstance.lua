@@ -17,8 +17,6 @@ end
 local Network = require(game.ReplicatedStorage.Library.Client.Network)
 local InstancingCmds = require(game.ReplicatedStorage.Library.Client.InstancingCmds)
 local MiscItem = require(game.ReplicatedStorage.Library.Items.MiscItem)
-local EggCmds = require(game.ReplicatedStorage.Library.Client.EggCmds)
-local CustomEggsCmds = require(game.ReplicatedStorage.Library.Client.CustomEggsCmds)
 local PlayerPet = require(game.ReplicatedStorage.Library.Client.PlayerPet)
 
 local oldCalculate = PlayerPet.CalculateSpeedMultiplier
@@ -59,22 +57,10 @@ _G.ScannedRoomsMap = {}
 _G.VistedRooms = {}
 _G.IsScanning = false
 _G.Teleporting = false
-_G.AutoHatch = false
-_G.AutoTPBestEgg = false
 _G.AutoMiniBoss = false
-_G.AutoTPLockedEgg = false
 _G.InfinitePetSpeed = false
 
-_G.SelectedLockedEggMult = "Any"
 
-local EggDropdown
-local FreeEggTPButton
-local AutoBestEgg
-local LockedEggTarget
-local LockedEggTPButton
-local AutoLockedEgg
-local AutoHatch
-local DisableHatchAnimation
 local BreakablesRoomTPButton
 local DeepChestRoomTPButton
 local BossTPButton
@@ -185,61 +171,6 @@ local function findRoomModelByUID(roomUID)
 	return nil
 end
 
-local function getNearestEgg(hrp)
-	local closestEgg = nil
-	local minDist = 40
-
-	for _, egg in pairs(CustomEggsCmds.All()) do
-		if egg._position then
-			local dist = (egg._position - hrp.Position).Magnitude
-			if dist < minDist then
-				minDist = dist
-				closestEgg = egg
-			end
-		end
-	end
-
-	return closestEgg
-end
-
-local function getBestEggRoom()
-	local bestRoom = nil
-	local maxMult = -1
-
-	for _, room in ipairs(_G.ScannedRooms) do
-		if string.match(room.Id, "DeepFreeEggRoom") ~= nil and room.EggMultiplier ~= nil then
-			if room.EggMultiplier > maxMult then
-				maxMult = room.EggMultiplier
-				bestRoom = room
-			end
-		end
-	end
-
-	return bestRoom
-end
-
-local function getBestLockedEggRoom()
-	local bestRoom = nil
-	local maxMult = -1
-	local targetMult = (_G.SelectedLockedEggMult and _G.SelectedLockedEggMult ~= "Any")
-		and tonumber(string.match(_G.SelectedLockedEggMult, "%d+"))
-		or nil
-
-	for _, room in ipairs(_G.ScannedRooms) do
-		if room.Id == "DeepLockedEggRoom" and room.EggMultiplier ~= nil then
-			if (not room.ExpireTime) or (room.ExpireTime - workspace:GetServerTimeNow() > 0) then
-				local isMatch = (not targetMult) or room.EggMultiplier >= targetMult
-
-				if isMatch and room.EggMultiplier > maxMult then
-					maxMult = room.EggMultiplier
-					bestRoom = room
-				end
-			end
-		end
-	end
-
-	return bestRoom
-end
 
 local function keyCheck()
 	local keyItem = MiscItem("Deep Backrooms Crayon Key")
@@ -577,148 +508,6 @@ local function canDoAction()
 	return (not _G.IsScanning) and (not _G.Teleporting)
 end
 
-FreeEggTPButton = Tab:CreateButton({
-	Name = "Teleport to Best Free Egg Room!",
-	Callback = function()
-		if (not canDoAction()) then
-			return
-		end
-
-		local room = getBestEggRoom()
-		if room then
-			TeleportToRoom(room.uid)
-		else
-			Rayfield:Notify({
-				Title = "No Room Found",
-				Content = "Could not find any BEST FREE EGG ROOM!",
-				Duration = 4,
-				Image = 4483362458
-			})
-		end
-	end,
-})
-
-AutoBestEgg = Tab:CreateToggle({
-	Name = "Auto TP To Best Egg",
-	CurrentValue = false,
-	Flag = "AutoTPBestEgg",
-	Callback = function(value)
-		if (not canDoAction()) then
-			return
-		end
-
-		if value then
-			if AutoFarmBoss ~= nil and _G.AutoMiniBoss == true then
-				AutoFarmBoss:Set(false)
-			end
-			if AutoLockedEgg ~= nil and _G.AutoTPLockedEgg == true then
-				AutoLockedEgg:Set(false)
-			end
-		end
-
-		_G.AutoTPBestEgg = value
-	end,
-})
-
-LockedEggTarget = Tab:CreateDropdown({
-	Name = "Locked Egg Mult Target",
-	Options = {"Any", "50x", "75x", "100x"},
-	CurrentOption = {"Any"},
-	MultipleOptions = false,
-	Flag = "EggTarget",
-	Callback = function(options)
-		if (not canDoAction()) then
-			return
-		end
-
-		_G.SelectedLockedEggMult = (typeof(options) == "table" and options[1] or options)
-	end,
-})
-
-LockedEggTPButton = Tab:CreateButton({
-	Name = "Teleport to Locked Egg Egg Room!",
-	Callback = function()
-		if (not canDoAction()) then
-			return
-		end
-
-		local room = getBestLockedEggRoom()
-		if room then
-			TeleportToRoom(room.uid)
-		else
-			Rayfield:Notify({
-				Title = "No Room Found",
-				Content = "Could not find LOCKED EGG ROOM!",
-				Duration = 4,
-				Image = 4483362458
-			})
-		end
-	end,
-})
-
-AutoLockedEgg = Tab:CreateToggle({
-	Name = "Auto TP To Locked Egg",
-	CurrentValue = false,
-	Flag = "AutoTPLockedEgg",
-	Callback = function(value)
-		if (not canDoAction()) then
-			return
-		end
-
-		if value then
-			if AutoFarmBoss ~= nil and _G.AutoMiniBoss == true then
-				AutoFarmBoss:Set(false)
-			end
-			if AutoBestEgg ~= nil and _G.AutoTPBestEgg == true then
-				AutoBestEgg:Set(false)
-			end
-		end
-
-		_G.AutoTPLockedEgg = value
-	end,
-})
-
-AutoHatch = Tab:CreateToggle({
-	Name = "Auto Hatch Eggs",
-	CurrentValue = false,
-	Flag = "AutoHatch",
-	Callback = function(value)
-		if (not canDoAction()) then
-			return
-		end
-		_G.AutoHatch = value
-	end,
-})
-
-DisableHatchAnimation = Tab:CreateToggle({
-	Name = "Disable Hatch Animation",
-	CurrentValue = false,
-	Flag = "DisableHatchAnimation",
-	Callback = function(value)
-		if (not canDoAction()) then
-			return
-		end
-
-		if workspace.CurrentCamera:FindFirstChild("Eggs") or workspace.CurrentCamera:FindFirstChild("Pets") then
-			return
-		end
-
-		local scripts = localPlayer:WaitForChild("PlayerScripts")
-		local scriptInstance = nil
-		for _, descendant in ipairs(scripts:GetDescendants()) do
-			if descendant.Name == "Egg Opening Frontend" then
-				scriptInstance = descendant
-				break
-			end
-		end
-
-		if not scriptInstance then
-			return
-		end
-
-		scriptInstance.Enabled = (not value)
-	end,
-})
 
 BreakablesRoomTPButton = MiniBossTab:CreateButton({
 	Name = "Teleport to nearest Breakable Room!",
@@ -847,12 +636,6 @@ AutoFarmBoss = MiniBossTab:CreateToggle({
 		end
 
 		if value then
-			if AutoHatch ~= nil and _G.AutoHatch == true then
-				AutoHatch:Set(false)
-			end
-			if AutoBestEgg ~= nil and _G.AutoTPBestEgg == true then
-				AutoBestEgg:Set(false)
-			end
 		end
 
 		_G.AutoMiniBoss = value
