@@ -87,16 +87,7 @@ local function getCharacter()
 	return localPlayer.Character or localPlayer.CharacterAdded:Wait()
 end
 
-local character = getCharacter()
-if character then
-	local enterPart = workspace:WaitForChild("__THINGS")
-		:WaitForChild("Instances")
-		:WaitForChild("Backrooms")
-		:WaitForChild("Teleports")
-		:WaitForChild("Enter")
-	character:PivotTo(enterPart.CFrame)
-end
-
+-- Removed auto teleport into Backrooms\n
 local function createMessage(msg)
 	if workspace:FindFirstChildOfClass("Message") then
 		return
