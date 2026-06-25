@@ -89,27 +89,47 @@ BossTab:CreateToggle({
 })
 
 RunService.Heartbeat:Connect(function()
-	if not _G.AutoBoss or not _G.BossRoom then return end
+	if not _G.AutoBoss then return end
+
+	if not _G.BossRoom then
+		loadCurrentBossRoom()
+		return
+	end
 
 	local char = getCharacter()
 	local root = char:FindFirstChild("HumanoidRootPart")
 	if not root then return end
 
 	local bossPos = _G.BossRoom.Position
+
 	if (root.Position - bossPos).Magnitude > 130 then
 		teleportBoss()
 		return
 	end
 
-	local breakables = workspace.__THINGS.Breakables:GetChildren()
-	for _, b in ipairs(breakables) do
+	local folder = workspace:FindFirstChild("__THINGS")
+		and workspace.__THINGS:FindFirstChild("Breakables")
+
+	if not folder then return end
+
+	for _, b in ipairs(folder:GetChildren()) do
 		local id = b:GetAttribute("BreakableID")
-		if id == "Daydream Mimic Chest2" or id == "Daydream Mimic Boss2" then
+
+		if id == "Daydream Mimic Chest2"
+		or id == "Daydream Mimic Boss2" then
+
 			if (b:GetPivot().Position - bossPos).Magnitude < 130 then
-				Network.UnreliableFire("Breakables_PlayerDealDamage", b:GetAttribute("BreakableUID"))
+				Network.UnreliableFire(
+					"Breakables_PlayerDealDamage",
+					b:GetAttribute("BreakableUID")
+				)
+
 				for _, pet in pairs(PlayerPet.GetByPlayer(player)) do
-					if pet.cpet then pet:SetTarget(b) end
+					if pet.cpet then
+						pet:SetTarget(b)
+					end
 				end
+
 				break
 			end
 		end
