@@ -50,7 +50,6 @@ local Window = Rayfield:CreateWindow({
 })
 local MiniBossTab = Window:CreateTab("Boss Chest", 4483362458)
 local MiscTab = Window:CreateTab("Misc", 4483362458)
-local StatusLabel = Tab:CreateLabel("Status: Idle")
 
 _G.ScannedRooms = {}
 _G.ScannedRoomsMap = {}
@@ -163,62 +162,6 @@ local function findRoomModelByUID(roomUID)
 	end
 
 	return nil
-end
-
-local function getNearestEgg(hrp)
-	local closestEgg = nil
-	local minDist = 40
-
-	for _, egg in pairs(CustomEggsCmds.All()) do
-		if egg._position then
-			local dist = (egg._position - hrp.Position).Magnitude
-			if dist < minDist then
-				minDist = dist
-				closestEgg = egg
-			end
-		end
-	end
-
-	return closestEgg
-end
-
-local function getBestEggRoom()
-	local bestRoom = nil
-	local maxMult = -1
-
-	for _, room in ipairs(_G.ScannedRooms) do
-		if string.match(room.Id, "DeepFreeEggRoom") ~= nil and room.EggMultiplier ~= nil then
-			if room.EggMultiplier > maxMult then
-				maxMult = room.EggMultiplier
-				bestRoom = room
-			end
-		end
-	end
-
-	return bestRoom
-end
-
-local function getBestLockedEggRoom()
-	local bestRoom = nil
-	local maxMult = -1
-	local targetMult = (_G.SelectedLockedEggMult and _G.SelectedLockedEggMult ~= "Any")
-		and tonumber(string.match(_G.SelectedLockedEggMult, "%d+"))
-		or nil
-
-	for _, room in ipairs(_G.ScannedRooms) do
-		if room.Id == "DeepLockedEggRoom" and room.EggMultiplier ~= nil then
-			if (not room.ExpireTime) or (room.ExpireTime - workspace:GetServerTimeNow() > 0) then
-				local isMatch = (not targetMult) or room.EggMultiplier >= targetMult
-
-				if isMatch and room.EggMultiplier > maxMult then
-					maxMult = room.EggMultiplier
-					bestRoom = room
-				end
-			end
-		end
-	end
-
-	return bestRoom
 end
 
 local function keyCheck()
@@ -422,137 +365,6 @@ local function TPtoSpawn()
 	end)
 end
 
-local function Scan()
-	if _G.IsScanning == true then
-		return
-	end
-
-	_G.IsScanning = true
-
-	local message = createMessage("Exploring the backrooms! (ONLY WORKS FOR DEEP BACKROOMS)")
-	StatusLabel:Set("Status: Scanning...")
-
-	local folder = getGeneratedBackrooms()
-	if not folder then
-		repeat
-			folder = getGeneratedBackrooms()
-			warn("WAITING...")
-			task.wait(0.5)
-		until folder ~= nil and #folder:GetChildren() > 0
-	end
-
-	CleanupWalls()
-
-	local spawnRoom = folder:WaitForChild("DeepSpawnRoom", 3)
-	if spawnRoom then
-		local spawnLocation = spawnRoom:FindFirstChild("DEEP_SPAWN_LOCATION")
-		if spawnLocation then
-			enterPosition = spawnLocation.Position
-			warn("SAVED", enterPosition)
-		end
-	end
-	
-	local function run()
-		local folder = getGeneratedBackrooms()
-		if not folder then
-			warn("no rooms RUN CALL")
-			return 
-		end
-
-		for _, room in ipairs(folder:GetChildren()) do
-			if room:GetAttribute("DeepRoom") == true then
-				local roomUID = room:GetAttribute("RoomUID")
-				if roomUID then
-					local existing = _G.ScannedRoomsMap[roomUID]
-					local roomId = room:GetAttribute("RoomID")
-					local roomCFrame = room:GetPivot()
-
-					if not existing then
-						local mult = room:GetAttribute("EggMultiplier") or 0
-						local roomData = {
-							uid = roomUID,
-							Id = room:GetAttribute("RoomID"),
-							Model = room,
-							CFrame = roomCFrame,
-							Position = roomCFrame.Position,
-							EggMultiplier = mult > 0 and mult or nil
-						}
-
-						table.insert(_G.ScannedRooms, roomData)
-						_G.ScannedRoomsMap[roomUID] = roomData
-						StatusLabel:Set("Status: Scanned " .. #_G.ScannedRooms .. " rooms")
-
-						if roomId == "DeepLockedEggRoom" or string.match(roomId, "DeepFreeEggRoom") ~= nil then
-							warn(roomId .. " with " .. mult .. "x mult")
-						else
-							if roomId == "GameMastersStage" then
-								warn("Boss room", roomId)
-							else
-								print(roomId)
-							end
-						end
-					end
-				end
-			end
-		end
-	end
-
-	run()
-
-	while true do
-		if #_G.ScannedRooms >= 800 then
-			break
-		end
-
-		if _G.Teleporting == true then
-			task.wait()
-			continue
-		end
-
-		local character = getCharacter()
-		if not character then
-			task.wait()
-			continue
-		end
-
-		local rootPart = character:FindFirstChild("HumanoidRootPart")
-		if not rootPart then
-			task.wait()
-			continue
-		end
-
-		local room = nil
-		local minDistance = math.huge
-		for _, r in ipairs(_G.ScannedRooms) do
-			if not _G.VistedRooms[r.uid] then
-				local dist = (r.Position - rootPart.Position).Magnitude
-				if dist < minDistance then
-					minDistance = dist
-					room = r
-				end
-			end
-		end
-
-		if not room then
-			warn("rooms break")
-			break
-		end
-
-		_G.VistedRooms[room.uid] = true
-		TeleportToRoom(room.uid, true)
-		task.wait(0.3)
-		RunService.RenderStepped:Wait()
-		run()
-	end
-
-	_G.IsScanning = false
-	StatusLabel:Set("Status: Scan Complete (" .. #_G.ScannedRooms .. " rooms)")
-	game.Debris:AddItem(message, 0)
-	TPtoSpawn()
-	
-	warn("Scan finished!")
-end
-
 local function canDoAction()
 	return (not _G.IsScanning) and (not _G.Teleporting)
 end
@@ -682,16 +494,6 @@ AutoFarmBoss = MiniBossTab:CreateToggle({
 		if (not canDoAction()) then
 			return
 		end
-
-		if value then
-			if AutoHatch ~= nil and _G.AutoHatch == true then
-				AutoHatch:Set(false)
-			end
-			if AutoBestEgg ~= nil and _G.AutoTPBestEgg == true then
-				AutoBestEgg:Set(false)
-			end
-		end
-
 		_G.AutoMiniBoss = value
 	end,
 })
@@ -718,112 +520,6 @@ ServerHopButton = MiscTab:CreateButton({
 		serverHop("Server Hopping...")
 	end,
 })
-
-task.spawn(function()
-	while true do
-		task.wait(0.5)
-
-		if not _G.AutoTPBestEgg then
-			continue
-		end
-
-		if not canDoAction() then
-			continue
-		end
-
-		local character = getCharacter()
-		if not character then
-			continue
-		end
-
-		local rootPart = character:FindFirstChild("HumanoidRootPart")
-		if not rootPart then
-			continue
-		end
-
-		local room = getBestEggRoom()
-		if room then
-			local sign = room.Model:FindFirstChild("Sign")
-			local pos = sign and sign:GetPivot().Position or room.Model:GetPivot().Position
-			local distance = (rootPart.Position - pos).Magnitude
-			if distance > (sign and 15 or 25) then
-				TeleportToRoom(room.uid)
-			end
-		else
-			serverHop("No Best Egg in this server. hopping...")
-			task.wait(5)
-		end
-	end
-end)
-
-
-task.spawn(function()
-	while true do
-		task.wait(0.5)
-
-		if not _G.AutoTPLockedEgg then
-			continue
-		end
-
-		if not canDoAction() then
-			continue
-		end
-
-		local character = getCharacter()
-		if not character then
-			continue
-		end
-
-		local rootPart = character:FindFirstChild("HumanoidRootPart")
-		if not rootPart then
-			continue
-		end
-
-		local room = getBestLockedEggRoom()
-		if room then
-			local sign = room.Model:FindFirstChild("Sign")
-			local pos = sign and sign:GetPivot().Position or room.Model:GetPivot().Position
-			local distance = (rootPart.Position - pos).Magnitude
-			if distance > (sign and 15 or 25) then
-				TeleportToRoom(room.uid)
-			end
-		else
-			serverHop("No Best Egg in this server. hopping...")
-			task.wait(5)
-		end
-	end
-end)
-
-task.spawn(function()
-	while true do
-		task.wait(0.25)
-
-		if not _G.AutoHatch then
-			continue
-		end
-
-		if not canDoAction() then
-			continue
-		end
-
-		local character = getCharacter()
-		if not character then
-			continue
-		end
-
-		local rootPart = character:FindFirstChild("HumanoidRootPart")
-		if not rootPart then
-			continue
-		end
-
-		local egg = getNearestEgg(rootPart)
-		if egg then
-			pcall(function()
-				Network.Invoke("CustomEggs_Hatch", egg._uid, EggCmds.GetMaxHatch(egg._dir))
-			end)
-		end
-	end
-end)
 
 task.spawn(function()
 	while true do
@@ -966,11 +662,9 @@ local function LoadCurrentBossRoom()
 				_G.ScannedRoomsMap[roomData.uid] = roomData
 
 				if roomData.Id == "GameMastersStage" then
-					StatusLabel:Set("Status: Boss Room Loaded")
 					SaveBossRoomConfig(roomData)
 					warn("Saved Boss Room:", roomData.uid)
 				else
-					StatusLabel:Set("Status: Current Room Loaded (Not Boss)")
 					warn("Current Room:", roomData.Id)
 				end
 
