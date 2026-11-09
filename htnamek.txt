@@ -2,14 +2,98 @@ local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local LP = Players.LocalPlayer
 
-print("--- [DEBUG AUTO COLLECT STARTED] ---")
-print(">> Vui lòng đi lại gần và NHẶT 1 quả táo bằng tay...")
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "DebugConsoleGui"
+ScreenGui.ResetOnSpawn = false
 
--- 1. Quét các Part quanh nhân vật trong bán kính 10 studs để phát hiện Part bị xoá khi nhặt
+pcall(function() ScreenGui.Parent = game:GetService("CoreGui") end)
+if not ScreenGui.Parent then ScreenGui.Parent = LP:WaitForChild("PlayerGui") end
+
+local Frame = Instance.new("Frame", ScreenGui)
+Frame.Size = UDim2.new(0, 320, 0, 200)
+Frame.Position = UDim2.new(0.05, 0, 0.25, 0)
+Frame.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+Frame.BorderSizePixel = 0
+Frame.Active = true
+Frame.Draggable = true
+
+local UICorner = Instance.new("UICorner", Frame)
+UICorner.CornerRadius = UDim.new(0, 8)
+
+local Title = Instance.new("TextLabel", Frame)
+Title.Size = UDim2.new(1, -60, 0, 26)
+Title.Position = UDim2.new(0, 8, 0, 0)
+Title.BackgroundTransparency = 1
+Title.Text = "Debug Console (Logs)"
+Title.TextColor3 = Color3.fromRGB(220, 220, 220)
+Title.Font = Enum.Font.GothamBold
+Title.TextSize = 12
+Title.TextXAlignment = Enum.TextXAlignment.Left
+
+local ClearBtn = Instance.new("TextButton", Frame)
+ClearBtn.Size = UDim2.new(0, 24, 0, 20)
+ClearBtn.Position = UDim2.new(1, -54, 0, 3)
+ClearBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 48)
+ClearBtn.Text = "C"
+ClearBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
+ClearBtn.Font = Enum.Font.GothamBold
+ClearBtn.TextSize = 11
+
+local CloseBtn = Instance.new("TextButton", Frame)
+CloseBtn.Size = UDim2.new(0, 24, 0, 20)
+CloseBtn.Position = UDim2.new(1, -27, 0, 3)
+CloseBtn.BackgroundColor3 = Color3.fromRGB(60, 30, 30)
+CloseBtn.Text = "X"
+CloseBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
+CloseBtn.Font = Enum.Font.GothamBold
+CloseBtn.TextSize = 11
+
+local Scroll = Instance.new("ScrollingFrame", Frame)
+Scroll.Size = UDim2.new(1, -12, 1, -34)
+Scroll.Position = UDim2.new(0, 6, 0, 28)
+Scroll.BackgroundColor3 = Color3.fromRGB(12, 12, 15)
+Scroll.BorderSizePixel = 0
+Scroll.ScrollBarThickness = 4
+Scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+
+local ListLayout = Instance.new("UIListLayout", Scroll)
+ListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+ListLayout.Padding = UDim.new(0, 3)
+
+local function log(text, color)
+    local Label = Instance.new("TextLabel")
+    Label.Size = UDim2.new(1, -8, 0, 0)
+    Label.AutomaticSize = Enum.AutomaticSize.Y
+    Label.BackgroundTransparency = 1
+    Label.Text = text
+    Label.TextColor3 = color or Color3.fromRGB(200, 200, 200)
+    Label.Font = Enum.Font.Code
+    Label.TextSize = 11
+    Label.TextXAlignment = Enum.TextXAlignment.Left
+    Label.TextWrapped = true
+    Label.Parent = Scroll
+    
+    Scroll.CanvasPosition = Vector2.new(0, 99999)
+end
+
+ClearBtn.MouseButton1Click:Connect(function()
+    for _, v in ipairs(Scroll:GetChildren()) do
+        if v:IsA("TextLabel") then v:Destroy() end
+    end
+end)
+
+local isAlive = true
+CloseBtn.MouseButton1Click:Connect(function()
+    isAlive = false
+    ScreenGui:Destroy()
+end)
+
+log(">> Vui lòng chạy lại nhặt 1 quả táo...", Color3.fromRGB(100, 200, 255))
+
 local trackedParts = {}
 
 task.spawn(function()
-    while true do
+    while isAlive do
         local char = LP.Character
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
         if hrp then
@@ -18,18 +102,14 @@ task.spawn(function()
                     local dist = (hrp.Position - v.Position).Magnitude
                     if dist <= 12 and not trackedParts[v] then
                         trackedParts[v] = true
-                        
-                        -- Lắng nghe xem part này có bị nhặt (Destroyed / Removed) không
                         v.AncestryChanged:Connect(function(_, parent)
-                            if not parent then
-                                warn("=================================")
-                                print("[PHÁT HIỆN VẬT PHẨM VỪA ĐƯỢC NHẶT!]")
-                                print("• Tên Part:", v.Name)
-                                print("• Class:", v.ClassName)
-                                print("• Model cha (Parent):", v.Parent and v.Parent.Name or "None")
-                                print("• Anchored:", v.Anchored)
-                                print("• CanCollide:", v.CanCollide)
-                                print("• Size:", tostring(v.Size))
+                            if not parent and isAlive then
+                                log("[VẬT PHẨM BỊ XOÁ/NHẶT]", Color3.fromRGB(80, 255, 120))
+                                log("• Name: " .. v.Name)
+                                log("• Class: " .. v.ClassName)
+                                log("• Parent: " .. (v.Parent and v.Parent.Name or "nil"))
+                                log("• Anchored: " .. tostring(v.Anchored))
+                                log("• Size: " .. tostring(v.Size))
                                 
                                 local p = v.Parent
                                 local path = v.Name
@@ -37,8 +117,7 @@ task.spawn(function()
                                     path = p.Name .. " -> " .. path
                                     p = p.Parent
                                 end
-                                print("• Đường dẫn (Path):", "Workspace -> " .. path)
-                                warn("=================================")
+                                log("• Path: " .. path, Color3.fromRGB(255, 230, 100))
                             end
                         end)
                     end
@@ -49,19 +128,17 @@ task.spawn(function()
     end
 end)
 
--- 2. Hook lắng nghe RemoteEvent / RemoteFunction nếu game dùng cơ chế gửi lệnh nhặt
 local oldNamecall
 oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
     local method = getnamecallmethod()
     local args = {...}
     
-    if (method == "FireServer" or method == "InvokeServer") then
+    if (method == "FireServer" or method == "InvokeServer") and isAlive then
         local remoteName = self.Name:lower()
         if remoteName:find("pickup") or remoteName:find("collect") or remoteName:find("item") or remoteName:find("drop") or remoteName:find("apple") or remoteName:find("fruit") then
-            warn(">>> PHÁT HIỆN REMOTE NHẶT:", self:GetFullName())
-            print("Arguments gửi lên:")
+            log("[REMOTE]: " .. self.Name, Color3.fromRGB(255, 170, 0))
             for i, arg in ipairs(args) do
-                print(string.format("  [%d]: %s (%s)", i, tostring(arg), typeof(arg)))
+                log("  arg[" .. i .. "]: " .. tostring(arg))
             end
         end
     end
