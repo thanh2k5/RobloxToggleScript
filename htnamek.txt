@@ -2,7 +2,7 @@ local P, W = game:GetService("Players").LocalPlayer, game:GetService("Workspace"
 local run, act = false, true
 
 local gui = Instance.new("ScreenGui")
-gui.Name = "AppleFarmGui"
+gui.Name = "AppleFarmClientGui"
 gui.ResetOnSpawn = false
 gui.DisplayOrder = 999999
 pcall(function() gui.Parent = game:GetService("CoreGui") end)
@@ -25,7 +25,7 @@ b.MouseButton1Click:Connect(function()
 end)
 
 local x = Instance.new("TextButton", f)
-x.Size, x.Position, x.Text = UDim2.new(0.28, 0, 1, 0), UDim2.new(0.72, 0, 0, 0), "XX"
+x.Size, x.Position, x.Text = UDim2.new(0.28, 0, 1, 0), UDim2.new(0.72, 0, 0, 0), "X"
 x.BackgroundColor3, x.TextColor3 = Color3.fromRGB(45, 45, 52), Color3.fromRGB(220, 220, 220)
 x.Font, x.TextSize = Enum.Font.GothamBold, 13
 Instance.new("UICorner", x).CornerRadius = UDim.new(0, 8)
@@ -35,27 +35,39 @@ x.MouseButton1Click:Connect(function()
     gui:Destroy()
 end)
 
-local function getTargetApples()
-    local list = {}
-    for _, obj in ipairs(W:GetDescendants()) do
-        if obj:IsA("Model") and string.sub(obj.Name, 1, 6) == "Apple_" then
-            local body = obj:FindFirstChild("Body")
-            if body and body:IsA("BasePart") then
-                table.insert(list, body)
+local function getClosestApple(hrp)
+    local closestPart = nil
+    local shortestDist = math.huge
+    
+    local function checkContainer(parentObj)
+        for _, obj in ipairs(parentObj:GetDescendants()) do
+            if obj:IsA("Model") and string.sub(obj.Name, 1, 6) == "Apple_" then
+                local body = obj:FindFirstChild("Body")
+                if body and body:IsA("BasePart") then
+                    local dist = (hrp.Position - body.Position).Magnitude
+                    if dist < shortestDist then
+                        shortestDist = dist
+                        closestPart = body
+                    end
+                end
             end
         end
     end
-    return list
+    
+    checkContainer(W)
+    if W.CurrentCamera then checkContainer(W.CurrentCamera) end
+    
+    return closestPart
 end
 
-local function touchAll(targetPart, char)
-    local parts = {"HumanoidRootPart", "RightFoot", "LeftFoot", "RightLowerLeg", "LeftLowerLeg"}
-    for _, partName in ipairs(parts) do
-        local p = char:FindFirstChild(partName)
-        if p and firetouchinterest then
-            firetouchinterest(p, targetPart, 0)
-            firetouchinterest(p, targetPart, 1)
-        end
+local function touchTarget(part, char)
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+    
+    if firetouchinterest then
+        firetouchinterest(root, part, 0)
+        task.wait()
+        firetouchinterest(root, part, 1)
     end
 end
 
@@ -64,27 +76,28 @@ task.spawn(function()
         if run and P.Character and P.Character:FindFirstChild("Humanoid") and P.Character:FindFirstChild("HumanoidRootPart") then
             local hum = P.Character.Humanoid
             local hrp = P.Character.HumanoidRootPart
-            local apples = getTargetApples()
+            local target = getClosestApple(hrp)
 
-            for _, target in ipairs(apples) do
-                if not run or not act then break end
-                
+            if target and target.Parent then
                 local startTime = tick()
-                while run and act and target and target.Parent and target:IsDescendantOf(W) do
-                    -- Điểm đích hạ thấp ngang mặt đất để chân chạm trực tiếp quả táo
-                    local targetPos = target.Position
-                    hum:MoveTo(targetPos)
-                    touchAll(target, P.Character)
+                while run and act and target and target.Parent and target:IsDescendantOf(game) do
+                    local tPos = target.Position
+                    hum:MoveTo(tPos)
+                    touchTarget(target, P.Character)
 
-                    local dist = (Vector2.new(hrp.Position.X, hrp.Position.Z) - Vector2.new(targetPos.X, targetPos.Z)).Magnitude
-                    if dist <= 1.5 or (tick() - startTime > 3.5) then
-                        touchAll(target, P.Character)
+                    -- Khi khoảng cách mặt phẳng X-Z dưới 2 stud, ép bước xuyên qua
+                    local dist2D = (Vector2.new(hrp.Position.X, hrp.Position.Z) - Vector2.new(tPos.X, tPos.Z)).Magnitude
+                    if dist2D <= 1.5 or (tick() - startTime > 4) then
+                        touchTarget(target, P.Character)
                         break
                     end
                     task.wait(0.05)
                 end
+            else
+                task.wait(0.3)
             end
+        else
+            task.wait(0.3)
         end
-        task.wait(0.2)
     end
 end)
