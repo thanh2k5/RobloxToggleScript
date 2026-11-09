@@ -4,6 +4,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local LP = Players.LocalPlayer
 local run, act = false, true
+local MAX_DISTANCE = 300
 
 local collectRemote = ReplicatedStorage:WaitForChild("Network", 5)
     and ReplicatedStorage.Network:WaitForChild("AppleService", 5)
@@ -34,7 +35,7 @@ b.MouseButton1Click:Connect(function()
 end)
 
 local x = Instance.new("TextButton", f)
-x.Size, x.Position, x.Text = UDim2.new(0.28, 0, 1, 0), UDim2.new(0.72, 0, 0, 0), "X"
+x.Size, x.Position, x.Text = UDim2.new(0.28, 0, 1, 0), UDim2.new(0.72, 0, 0, 0), "Xz"
 x.BackgroundColor3, x.TextColor3 = Color3.fromRGB(45, 45, 52), Color3.fromRGB(220, 220, 220)
 x.Font, x.TextSize = Enum.Font.GothamBold, 13
 Instance.new("UICorner", x).CornerRadius = UDim.new(0, 8)
@@ -46,14 +47,14 @@ end)
 
 local function getClosestApple(hrp)
     local targetModel, targetBody = nil, nil
-    local minDistance = math.huge
+    local minDistance = MAX_DISTANCE
     
     for _, obj in ipairs(Workspace:GetDescendants()) do
         if obj:IsA("Model") and string.sub(obj.Name, 1, 6) == "Apple_" then
             local body = obj:FindFirstChild("Body") or obj:FindFirstChildWhichIsA("BasePart")
             if body then
                 local dist = (hrp.Position - body.Position).Magnitude
-                if dist < minDistance then
+                if dist <= minDistance then
                     minDistance = dist
                     targetModel = obj
                     targetBody = body
@@ -64,17 +65,17 @@ local function getClosestApple(hrp)
     return targetModel, targetBody
 end
 
+local isCalling = false
 local function collectApple(model)
-    if not collectRemote or not model then return end
+    if not collectRemote or not model or isCalling then return end
+    isCalling = true
     
-    local appleId = model:GetAttribute("Id") or model:GetAttribute("UUID") or model:GetAttribute("Index") or model.Name
-    
-    -- Thử các dạng payload phổ biến của RemoteFunction Collect
     task.spawn(function()
-        pcall(function() collectRemote:InvokeServer({model}) end)
-        pcall(function() collectRemote:InvokeServer({appleId}) end)
-        pcall(function() collectRemote:InvokeServer({Id = appleId}) end)
-        pcall(function() collectRemote:InvokeServer({Model = model}) end)
+        pcall(function()
+            collectRemote:InvokeServer({model})
+        end)
+        task.wait(0.3)
+        isCalling = false
     end)
 end
 
@@ -91,21 +92,18 @@ task.spawn(function()
                     hum:MoveTo(body.Position)
                     
                     local dist = (hrp.Position - body.Position).Magnitude
-                    if dist <= 6 then
+                    if dist <= 3.5 or (tick() - startTime > 4) then
                         collectApple(model)
-                    end
-                    
-                    if dist <= 2 or (tick() - startTime > 3.5) then
-                        collectApple(model)
+                        task.wait(0.3)
                         break
                     end
-                    task.wait(0.05)
+                    task.wait(0.1)
                 end
             else
-                task.wait(0.3)
+                task.wait(0.5)
             end
         else
-            task.wait(0.3)
+            task.wait(0.5)
         end
     end
 end)
