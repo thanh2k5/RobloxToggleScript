@@ -35,7 +35,7 @@ b.MouseButton1Click:Connect(function()
 end)
 
 local x = Instance.new("TextButton", f)
-x.Size, x.Position, x.Text = UDim2.new(0.28, 0, 1, 0), UDim2.new(0.72, 0, 0, 0), "Xz"
+x.Size, x.Position, x.Text = UDim2.new(0.28, 0, 1, 0), UDim2.new(0.72, 0, 0, 0), "X"
 x.BackgroundColor3, x.TextColor3 = Color3.fromRGB(45, 45, 52), Color3.fromRGB(220, 220, 220)
 x.Font, x.TextSize = Enum.Font.GothamBold, 13
 Instance.new("UICorner", x).CornerRadius = UDim.new(0, 8)
@@ -49,15 +49,21 @@ local function getClosestApple(hrp)
     local targetModel, targetBody = nil, nil
     local minDistance = MAX_DISTANCE
     
+    -- Giới hạn độ cao: từ ngang thắt lưng (hrp.Position.Y) trở xuống đất
+    local maxY = hrp.Position.Y
+    
     for _, obj in ipairs(Workspace:GetDescendants()) do
         if obj:IsA("Model") and string.sub(obj.Name, 1, 6) == "Apple_" then
             local body = obj:FindFirstChild("Body") or obj:FindFirstChildWhichIsA("BasePart")
             if body then
-                local dist = (hrp.Position - body.Position).Magnitude
-                if dist <= minDistance then
-                    minDistance = dist
-                    targetModel = obj
-                    targetBody = body
+                -- Chỉ nhận vật phẩm có vị trí Y nằm dưới nửa thân người
+                if body.Position.Y <= maxY then
+                    local dist = (hrp.Position - body.Position).Magnitude
+                    if dist <= minDistance then
+                        minDistance = dist
+                        targetModel = obj
+                        targetBody = body
+                    end
                 end
             end
         end
