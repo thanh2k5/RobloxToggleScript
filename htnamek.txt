@@ -14,14 +14,40 @@ b.MouseButton1Click:Connect(function()
 end)
 
 local x = Instance.new("TextButton", f)
-x.Size, x.Position, x.Text = UDim2.new(0.25, 0, 1, 0), UDim2.new(0.75, 0, 0, 0), "XX"
+x.Size, x.Position, x.Text = UDim2.new(0.25, 0, 1, 0), UDim2.new(0.75, 0, 0, 0), "X"
 x.MouseButton1Click:Connect(function() run, act = false, false gui:Destroy() end)
 
-local function isMovingItem(v)
+local function isAppleItem(v)
     if not (v:IsA("BasePart") and v.Parent) then return false end
     if v:IsDescendantOf(P.Character or W) and v:IsDescendantOf(P.Character) then return false end
-    if v.Anchored then return false end
-    return (v.AssemblyLinearVelocity.Magnitude > 0.05 or v.AssemblyAngularVelocity.Magnitude > 0.05)
+    
+    -- Loại trừ mặt sàn hoặc tường trang trí quá to
+    if v.Size.X > 8 or v.Size.Y > 8 or v.Size.Z > 8 then return false end
+    
+    local name = v.Name:lower()
+    local parentName = v.Parent.Name:lower()
+    
+    if name:find("apple") or name:find("fruit") or name:find("táo") or name:find("drop")
+       or parentName:find("apple") or parentName:find("fruit") or parentName:find("drop") then
+        return true
+    end
+    return false
+end
+
+local function triggerTouch(part, char)
+    local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Head")
+    if not root then return end
+    
+    if firetouchinterest then
+        firetouchinterest(root, part, 0)
+        task.wait()
+        firetouchinterest(root, part, 1)
+    end
+    
+    local pr = part:FindFirstChildWhichIsA("ProximityPrompt", true) or (part.Parent and part.Parent:FindFirstChildWhichIsA("ProximityPrompt", true))
+    if pr and fireproximityprompt then
+        fireproximityprompt(pr)
+    end
 end
 
 task.spawn(function()
@@ -32,19 +58,19 @@ task.spawn(function()
 
             for _, v in ipairs(W:GetDescendants()) do
                 if not run or not act then break end
-                local n = v.Name:lower()
-                if (n:find("apple") or n:find("fruit") or n:find("táo") or n:find("drop")) and isMovingItem(v) then
+                
+                if isAppleItem(v) then
                     local startTime = tick()
-                    while run and act and v and v.Parent and isMovingItem(v) do
-                        pcall(function() v.CanCollide = false end)
+                    while run and act and v and v.Parent and isAppleItem(v) do
                         hum:MoveTo(v.Position)
+                        triggerTouch(v, P.Character)
                         
-                        if (hrp.Position - v.Position).Magnitude <= 3.5 or (tick() - startTime > 6) then
-                            local pr = v:FindFirstChildWhichIsA("ProximityPrompt") or (v.Parent and v.Parent:FindFirstChildWhichIsA("ProximityPrompt"))
-                            if pr then fireproximityprompt(pr) end
+                        -- Chạy vào sát tâm vật phẩm dưới 2 stud là đã nhặt thành công
+                        if (hrp.Position - v.Position).Magnitude <= 2 or (tick() - startTime > 4) then
+                            triggerTouch(v, P.Character)
                             break
                         end
-                        task.wait(0.1)
+                        task.wait(0.05)
                     end
                 end
             end
