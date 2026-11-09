@@ -1,11 +1,36 @@
-local TARGET_PLACE = 12900046592
-local dest = Vector3.new(596, 24, 260)
-if game.PlaceId ~= TARGET_PLACE then return end
-local p = game.Players.LocalPlayer
-local function tp(char)
-    task.wait(10)
-    local hrp = char:WaitForChild("HumanoidRootPart")
-    hrp.CFrame = CFrame.new(dest)
-end
-if p.Character then tp(p.Character) end
-p.CharacterAdded:Connect(tp)
+local P, W = game:GetService("Players").LocalPlayer, game:GetService("Workspace")
+local run, act = false, true
+
+local gui = Instance.new("ScreenGui", game:GetService("CoreGui"))
+local f = Instance.new("Frame", gui)
+f.Size, f.Position, f.Active, f.Draggable = UDim2.new(0, 130, 0, 40), UDim2.new(0.05, 0, 0.4, 0), true, true
+
+local b = Instance.new("TextButton", f)
+b.Size, b.Text, b.BackgroundColor3 = UDim2.new(0.75, 0, 1, 0), "OFF", Color3.fromRGB(200, 50, 50)
+b.MouseButton1Click:Connect(function()
+    run = not run
+    b.Text = run and "ON" or "OFF"
+    b.BackgroundColor3 = run and Color3.fromRGB(50, 180, 80) or Color3.fromRGB(200, 50, 50)
+end)
+
+local x = Instance.new("TextButton", f)
+x.Size, x.Position, x.Text = UDim2.new(0.25, 0, 1, 0), UDim2.new(0.75, 0, 0, 0), "X"
+x.MouseButton1Click:Connect(function() run, act = false, false gui:Destroy() end)
+
+task.spawn(function()
+    while act do
+        if run and P.Character and P.Character:FindFirstChild("HumanoidRootPart") then
+            for _, v in ipairs(W:GetDescendants()) do
+                if not run or not act then break end
+                local n = v.Name:lower()
+                if (n:find("apple") or n:find("fruit") or n:find("táo") or n:find("drop")) and v:IsA("BasePart") then
+                    P.Character.HumanoidRootPart.CFrame = v.CFrame + Vector3.new(0, 1, 0)
+                    local pr = v:FindFirstChildWhichIsA("ProximityPrompt") or (v.Parent and v.Parent:FindFirstChildWhichIsA("ProximityPrompt"))
+                    if pr then fireproximityprompt(pr) end
+                    task.wait(0.2)
+                end
+            end
+        end
+        task.wait(0.5)
+    end
+end)
