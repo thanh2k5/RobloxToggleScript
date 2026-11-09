@@ -1,103 +1,194 @@
-local P, W = game:GetService("Players").LocalPlayer, game:GetService("Workspace")
-local run, act = false, true
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local UserInputService = game:GetService("UserInputService")
+local LP = Players.LocalPlayer
 
-local gui = Instance.new("ScreenGui")
-gui.Name = "AppleFarmClientGui"
-gui.ResetOnSpawn = false
-gui.DisplayOrder = 999999
-pcall(function() gui.Parent = game:GetService("CoreGui") end)
-if not gui.Parent then gui.Parent = P:WaitForChild("PlayerGui") end
+-- 1. TẠO UI DEBUG PHÙ HỢP CHO DELTA MOBILE
+local PlayerGui = LP:WaitForChild("PlayerGui", 10)
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "AdvancedDebugGui"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.DisplayOrder = 999999
+ScreenGui.Parent = PlayerGui
 
-local f = Instance.new("Frame", gui)
-f.Size, f.Position, f.Active, f.Draggable = UDim2.new(0, 130, 0, 40), UDim2.new(0.05, 0, 0.4, 0), true, true
-f.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
-Instance.new("UICorner", f).CornerRadius = UDim.new(0, 8)
+local Frame = Instance.new("Frame", ScreenGui)
+Frame.Size = UDim2.new(0, 300, 0, 220)
+Frame.Position = UDim2.new(0.5, -150, 0.15, 0)
+Frame.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
+Frame.BorderSizePixel = 0
+Frame.Active = true
 
-local b = Instance.new("TextButton", f)
-b.Size, b.Text, b.BackgroundColor3 = UDim2.new(0.72, 0, 1, 0), "OFF", Color3.fromRGB(200, 50, 50)
-b.TextColor3, b.Font, b.TextSize = Color3.fromRGB(255, 255, 255), Enum.Font.GothamBold, 13
-Instance.new("UICorner", b).CornerRadius = UDim.new(0, 8)
+Instance.new("UICorner", Frame).CornerRadius = UDim.new(0, 8)
 
-b.MouseButton1Click:Connect(function()
-    run = not run
-    b.Text = run and "ON" or "OFF"
-    b.BackgroundColor3 = run and Color3.fromRGB(50, 180, 80) or Color3.fromRGB(200, 50, 50)
+-- Kéo thả cảm ứng trên điện thoại
+local dragging, dragInput, dragStart, startPos
+Frame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+        dragStart = input.Position
+        startPos = Frame.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then dragging = false end
+        end)
+    end
+end)
+Frame.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement then
+        dragInput = input
+    end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        local delta = input.Position - dragStart
+        Frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
 end)
 
-local x = Instance.new("TextButton", f)
-x.Size, x.Position, x.Text = UDim2.new(0.28, 0, 1, 0), UDim2.new(0.72, 0, 0, 0), "X"
-x.BackgroundColor3, x.TextColor3 = Color3.fromRGB(45, 45, 52), Color3.fromRGB(220, 220, 220)
-x.Font, x.TextSize = Enum.Font.GothamBold, 13
-Instance.new("UICorner", x).CornerRadius = UDim.new(0, 8)
+local Title = Instance.new("TextLabel", Frame)
+Title.Size = UDim2.new(1, -70, 0, 26)
+Title.Position = UDim2.new(0, 8, 0, 0)
+Title.BackgroundTransparency = 1
+Title.Text = "Deep Debugger (Touch & Remote)"
+Title.TextColor3 = Color3.fromRGB(255, 215, 0)
+Title.Font = Enum.Font.GothamBold
+Title.TextSize = 11
+Title.TextXAlignment = Enum.TextXAlignment.Left
 
-x.MouseButton1Click:Connect(function()
-    run, act = false, false
-    gui:Destroy()
+local ClearBtn = Instance.new("TextButton", Frame)
+ClearBtn.Size = UDim2.new(0, 24, 0, 20)
+ClearBtn.Position = UDim2.new(1, -56, 0, 3)
+ClearBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
+ClearBtn.Text = "C"
+ClearBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
+ClearBtn.Font = Enum.Font.GothamBold
+ClearBtn.TextSize = 11
+
+local CloseBtn = Instance.new("TextButton", Frame)
+CloseBtn.Size = UDim2.new(0, 24, 0, 20)
+CloseBtn.Position = UDim2.new(1, -28, 0, 3)
+CloseBtn.BackgroundColor3 = Color3.fromRGB(70, 25, 25)
+CloseBtn.Text = "X"
+CloseBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
+CloseBtn.Font = Enum.Font.GothamBold
+CloseBtn.TextSize = 11
+
+local Scroll = Instance.new("ScrollingFrame", Frame)
+Scroll.Size = UDim2.new(1, -12, 1, -34)
+Scroll.Position = UDim2.new(0, 6, 0, 28)
+Scroll.BackgroundColor3 = Color3.fromRGB(10, 10, 14)
+Scroll.BorderSizePixel = 0
+Scroll.ScrollBarThickness = 4
+Scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+
+local ListLayout = Instance.new("UIListLayout", Scroll)
+ListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+ListLayout.Padding = UDim.new(0, 2)
+
+local isAlive = true
+local function log(text, color)
+    if not isAlive then return end
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, -6, 0, 0)
+    lbl.AutomaticSize = Enum.AutomaticSize.Y
+    lbl.BackgroundTransparency = 1
+    lbl.Text = text
+    lbl.TextColor3 = color or Color3.fromRGB(220, 220, 220)
+    lbl.Font = Enum.Font.Code
+    lbl.TextSize = 10
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.TextWrapped = true
+    lbl.Parent = Scroll
+    Scroll.CanvasPosition = Vector2.new(0, 999999)
+end
+
+ClearBtn.MouseButton1Click:Connect(function()
+    for _, v in ipairs(Scroll:GetChildren()) do
+        if v:IsA("TextLabel") then v:Destroy() end
+    end
 end)
 
-local function getClosestApple(hrp)
-    local closestPart = nil
-    local shortestDist = math.huge
-    
-    local function checkContainer(parentObj)
-        for _, obj in ipairs(parentObj:GetDescendants()) do
-            if obj:IsA("Model") and string.sub(obj.Name, 1, 6) == "Apple_" then
-                local body = obj:FindFirstChild("Body")
-                if body and body:IsA("BasePart") then
-                    local dist = (hrp.Position - body.Position).Magnitude
-                    if dist < shortestDist then
-                        shortestDist = dist
-                        closestPart = body
-                    end
-                end
-            end
-        end
-    end
-    
-    checkContainer(W)
-    if W.CurrentCamera then checkContainer(W.CurrentCamera) end
-    
-    return closestPart
-end
+CloseBtn.MouseButton1Click:Connect(function()
+    isAlive = false
+    ScreenGui:Destroy()
+end)
 
-local function touchTarget(part, char)
-    local root = char:FindFirstChild("HumanoidRootPart")
-    if not root then return end
-    
-    if firetouchinterest then
-        firetouchinterest(root, part, 0)
-        task.wait()
-        firetouchinterest(root, part, 1)
-    end
-end
+log(">> Chay lai nhat 1 qua tao de phan tich...", Color3.fromRGB(100, 220, 255))
+
+-- 2. THEO DÕI VẬT LÝ VÀ CẤU TRÚC MODEL TÁO
+local tracked = {}
 
 task.spawn(function()
-    while act do
-        if run and P.Character and P.Character:FindFirstChild("Humanoid") and P.Character:FindFirstChild("HumanoidRootPart") then
-            local hum = P.Character.Humanoid
-            local hrp = P.Character.HumanoidRootPart
-            local target = getClosestApple(hrp)
-
-            if target and target.Parent then
-                local startTime = tick()
-                while run and act and target and target.Parent and target:IsDescendantOf(game) do
-                    local tPos = target.Position
-                    hum:MoveTo(tPos)
-                    touchTarget(target, P.Character)
-
-                    -- Khi khoảng cách mặt phẳng X-Z dưới 2 stud, ép bước xuyên qua
-                    local dist2D = (Vector2.new(hrp.Position.X, hrp.Position.Z) - Vector2.new(tPos.X, tPos.Z)).Magnitude
-                    if dist2D <= 1.5 or (tick() - startTime > 4) then
-                        touchTarget(target, P.Character)
-                        break
+    while isAlive do
+        local char = LP.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            for _, obj in ipairs(Workspace:GetDescendants()) do
+                if obj:IsA("Model") and string.sub(obj.Name, 1, 6) == "Apple_" and not tracked[obj] then
+                    local body = obj:FindFirstChild("Body")
+                    if body and body:IsA("BasePart") then
+                        local dist = (hrp.Position - body.Position).Magnitude
+                        if dist <= 12 then
+                            tracked[obj] = true
+                            
+                            -- In chi tiết các thành phần trong Model táo
+                            log("[PHAT HIEN TAO GAN BAN]", Color3.fromRGB(255, 200, 80))
+                            log("• Model: " .. obj.Name)
+                            log("• FullPath: " .. obj:GetFullName())
+                            
+                            -- Kiểm tra các con bên trong Model
+                            local childrenNames = {}
+                            for _, c in ipairs(obj:GetChildren()) do
+                                table.insert(childrenNames, c.Name .. " (" .. c.ClassName .. ")")
+                            end
+                            log("• Con ben trong: " .. table.concat(childrenNames, ", "))
+                            
+                            -- Kiểm tra Attributes
+                            local attrs = obj:GetAttributes()
+                            local attrCount = 0
+                            for k, v in pairs(attrs) do
+                                attrCount = attrCount + 1
+                                log("• Attr: " .. tostring(k) .. " = " .. tostring(v))
+                            end
+                            
+                            -- Lắng nghe xem Model hoặc Body biến mất thế nào
+                            obj.AncestryChanged:Connect(function(_, parent)
+                                if not parent and isAlive then
+                                    log("[MODEL TAO DA BI NHAT/XOA]", Color3.fromRGB(80, 255, 120))
+                                    log("• Model da bi Destroy(): " .. obj.Name)
+                                end
+                            end)
+                        end
                     end
-                    task.wait(0.05)
                 end
-            else
-                task.wait(0.3)
             end
-        else
-            task.wait(0.3)
+        end
+        task.wait(0.2)
+    end
+end)
+
+-- 3. HOOK MỌI LỆNH GỬI LÊN SERVER (FIRESERVER / INVOKESERVER)
+local oldNamecall
+oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+    local method = getnamecallmethod()
+    local args = {...}
+    
+    if isAlive and (method == "FireServer" or method == "InvokeServer") then
+        local rName = self.Name
+        -- Lọc bỏ các remote hệ thống mặc định của Roblox
+        if rName ~= "UpdatePlayerBlockList" and rName ~= "CharacterLoaded" and not rName:find("Chat") then
+            log("[REMOTE GOI]: " .. rName, Color3.fromRGB(255, 130, 220))
+            log("• Method: " .. method .. " | Path: " .. self:GetFullName())
+            for i, arg in ipairs(args) do
+                local valStr = tostring(arg)
+                if typeof(arg) == "Instance" then
+                    valStr = arg:GetFullName()
+                elseif typeof(arg) == "table" then
+                    valStr = "{table: " .. #arg .. " items}"
+                end
+                log("  arg[" .. i .. "] (" .. typeof(arg) .. "): " .. valStr)
+            end
         end
     end
+    
+    return oldNamecall(self, ...)
 end)
