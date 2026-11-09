@@ -14,16 +14,14 @@ b.MouseButton1Click:Connect(function()
 end)
 
 local x = Instance.new("TextButton", f)
-x.Size, x.Position, x.Text = UDim2.new(0.25, 0, 1, 0), UDim2.new(0.75, 0, 0, 0), "X"
+x.Size, x.Position, x.Text = UDim2.new(0.25, 0, 1, 0), UDim2.new(0.75, 0, 0, 0), "XX"
 x.MouseButton1Click:Connect(function() run, act = false, false gui:Destroy() end)
 
 local function isMovingItem(v)
     if not (v:IsA("BasePart") and v.Parent) then return false end
     if v:IsDescendantOf(P.Character or W) and v:IsDescendantOf(P.Character) then return false end
     if v.Anchored then return false end
-    if v.AssemblyLinearVelocity.Magnitude > 0.05 or v.AssemblyAngularVelocity.Magnitude > 0.05 then return true end
-    if v:FindFirstChildWhichIsA("BodyMover", true) or v:FindFirstChildWhichIsA("Constraint", true) or v:FindFirstChildWhichIsA("Tween", true) then return true end
-    return false
+    return (v.AssemblyLinearVelocity.Magnitude > 0.05 or v.AssemblyAngularVelocity.Magnitude > 0.05)
 end
 
 task.spawn(function()
@@ -36,10 +34,12 @@ task.spawn(function()
                 if not run or not act then break end
                 local n = v.Name:lower()
                 if (n:find("apple") or n:find("fruit") or n:find("táo") or n:find("drop")) and isMovingItem(v) then
+                    local startTime = tick()
                     while run and act and v and v.Parent and isMovingItem(v) do
+                        pcall(function() v.CanCollide = false end)
                         hum:MoveTo(v.Position)
-                        local dist = (hrp.Position - v.Position).Magnitude
-                        if dist <= 4 then
+                        
+                        if (hrp.Position - v.Position).Magnitude <= 3.5 or (tick() - startTime > 6) then
                             local pr = v:FindFirstChildWhichIsA("ProximityPrompt") or (v.Parent and v.Parent:FindFirstChildWhichIsA("ProximityPrompt"))
                             if pr then fireproximityprompt(pr) end
                             break
@@ -49,6 +49,6 @@ task.spawn(function()
                 end
             end
         end
-        task.wait(0.5)
+        task.wait(0.3)
     end
 end)
