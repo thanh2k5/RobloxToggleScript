@@ -1,10 +1,13 @@
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 
 local LP = Players.LocalPlayer
-local run, act = false, true
+local Camera = Workspace.CurrentCamera
+local run, flyCam, act = false, false, true
 local MAX_DISTANCE = 300
+local CAM_SPEED = 45
 
 local collectRemote = ReplicatedStorage:WaitForChild("Network", 5)
     and ReplicatedStorage.Network:WaitForChild("AppleService", 5)
@@ -19,51 +22,103 @@ pcall(function() gui.Parent = game:GetService("CoreGui") end)
 if not gui.Parent then gui.Parent = LP:WaitForChild("PlayerGui") end
 
 local f = Instance.new("Frame", gui)
-f.Size, f.Position, f.Active, f.Draggable = UDim2.new(0, 130, 0, 40), UDim2.new(0.05, 0, 0.4, 0), true, true
+f.Size, f.Position, f.Active, f.Draggable = UDim2.new(0, 200, 0, 40), UDim2.new(0.05, 0, 0.4, 0), true, true
 f.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
 Instance.new("UICorner", f).CornerRadius = UDim.new(0, 8)
 
+-- Nút Auto Nhặt
 local b = Instance.new("TextButton", f)
-b.Size, b.Text, b.BackgroundColor3 = UDim2.new(0.72, 0, 1, 0), "OFF", Color3.fromRGB(200, 50, 50)
-b.TextColor3, b.Font, b.TextSize = Color3.fromRGB(255, 255, 255), Enum.Font.GothamBold, 13
+b.Size, b.Text, b.BackgroundColor3 = UDim2.new(0.42, 0, 1, 0), "Farm: OFF", Color3.fromRGB(200, 50, 50)
+b.TextColor3, b.Font, b.TextSize = Color3.fromRGB(255, 255, 255), Enum.Font.GothamBold, 12
 Instance.new("UICorner", b).CornerRadius = UDim.new(0, 8)
 
 b.MouseButton1Click:Connect(function()
     run = not run
-    b.Text = run and "ON" or "OFF"
+    b.Text = run and "Farm: ON" or "Farm: OFF"
     b.BackgroundColor3 = run and Color3.fromRGB(50, 180, 80) or Color3.fromRGB(200, 50, 50)
 end)
 
+-- Nút Fly Camera
+local cBtn = Instance.new("TextButton", f)
+cBtn.Size, cBtn.Position, cBtn.Text = UDim2.new(0.40, 0, 1, 0), UDim2.new(0.42, 0, 0, 0), "Cam: OFF"
+cBtn.BackgroundColor3, cBtn.TextColor3 = Color3.fromRGB(60, 60, 70), Color3.fromRGB(255, 255, 255)
+cBtn.Font, cBtn.TextSize = Enum.Font.GothamBold, 12
+Instance.new("UICorner", cBtn).CornerRadius = UDim.new(0, 8)
+
+local camPos = Vector3.zero
+local camConn
+
+local function toggleFlyCam(state)
+    flyCam = state
+    cBtn.Text = flyCam and "Cam: ON" or "Cam: OFF"
+    cBtn.BackgroundColor3 = flyCam and Color3.fromRGB(40, 130, 220) or Color3.fromRGB(60, 60, 70)
+
+    local char = LP.Character
+    local hum = char and char:FindFirstChild("Humanoid")
+
+    if flyCam then
+        camPos = Camera.CFrame.Position
+        Camera.CameraType = Enum.CameraType.Scriptable
+
+        camConn = RunService.RenderStepped:Connect(function(dt)
+            if not flyCam or not act then return end
+            local lookCF = Camera.CFrame
+            local moveDir = hum and hum.MoveDirection or Vector3.zero
+
+            if moveDir.Magnitude > 0 then
+                local flatLook = Vector3.new(lookCF.LookVector.X, 0, lookCF.LookVector.Z)
+                local forwardAmount = flatLook.Magnitude > 0 and moveDir:Dot(flatLook.Unit) or 0
+                local rightAmount = moveDir:Dot(lookCF.RightVector)
+
+                local velocity = (lookCF.LookVector * forwardAmount) + (lookCF.RightVector * rightAmount)
+                camPos = camPos + (velocity * CAM_SPEED * dt)
+                
+                -- Nếu không bật auto farm thì giữ nhân vật đứng yên tại chỗ khi kéo joystick bay cam
+                if not run and hum then
+                    local hrp = char:FindFirstChild("HumanoidRootPart")
+                    if hrp then hum:MoveTo(hrp.Position) end
+                end
+            end
+
+            Camera.CFrame = CFrame.new(camPos) * (lookCF - lookCF.Position)
+        end)
+    else
+        if camConn then camConn:Disconnect() camConn = nil end
+        Camera.CameraType = Enum.CameraType.Custom
+    end
+end
+
+cBtn.MouseButton1Click:Connect(function()
+    toggleFlyCam(not flyCam)
+end)
+
+-- Nút Tắt Hoàn Toàn (X)
 local x = Instance.new("TextButton", f)
-x.Size, x.Position, x.Text = UDim2.new(0.28, 0, 1, 0), UDim2.new(0.72, 0, 0, 0), "X"
+x.Size, x.Position, x.Text = UDim2.new(0.18, 0, 1, 0), UDim2.new(0.82, 0, 0, 0), "X"
 x.BackgroundColor3, x.TextColor3 = Color3.fromRGB(45, 45, 52), Color3.fromRGB(220, 220, 220)
-x.Font, x.TextSize = Enum.Font.GothamBold, 13
+x.Font, x.TextSize = Enum.Font.GothamBold, 12
 Instance.new("UICorner", x).CornerRadius = UDim.new(0, 8)
 
 x.MouseButton1Click:Connect(function()
     run, act = false, false
+    if flyCam then toggleFlyCam(false) end
     gui:Destroy()
 end)
 
 local function getClosestApple(hrp)
     local targetModel, targetBody = nil, nil
     local minDistance = MAX_DISTANCE
-    
-    -- Giới hạn độ cao: từ ngang thắt lưng (hrp.Position.Y) trở xuống đất
     local maxY = hrp.Position.Y
     
     for _, obj in ipairs(Workspace:GetDescendants()) do
         if obj:IsA("Model") and string.sub(obj.Name, 1, 6) == "Apple_" then
             local body = obj:FindFirstChild("Body") or obj:FindFirstChildWhichIsA("BasePart")
-            if body then
-                -- Chỉ nhận vật phẩm có vị trí Y nằm dưới nửa thân người
-                if body.Position.Y <= maxY then
-                    local dist = (hrp.Position - body.Position).Magnitude
-                    if dist <= minDistance then
-                        minDistance = dist
-                        targetModel = obj
-                        targetBody = body
-                    end
+            if body and body.Position.Y <= maxY then
+                local dist = (hrp.Position - body.Position).Magnitude
+                if dist <= minDistance then
+                    minDistance = dist
+                    targetModel = obj
+                    targetBody = body
                 end
             end
         end
@@ -77,14 +132,13 @@ local function collectApple(model)
     isCalling = true
     
     task.spawn(function()
-        pcall(function()
-            collectRemote:InvokeServer({model})
-        end)
+        pcall(function() collectRemote:InvokeServer({model}) end)
         task.wait(0.3)
         isCalling = false
     end)
 end
 
+-- Vòng lặp Auto Farm chạy độc lập kể cả khi bật Cam: ON
 task.spawn(function()
     while act do
         if run and LP.Character and LP.Character:FindFirstChild("Humanoid") and LP.Character:FindFirstChild("HumanoidRootPart") then
